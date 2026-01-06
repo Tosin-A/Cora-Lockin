@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "CoreSense",
+    "slug": "coresense",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#000000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.coresense.app",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "CoreSense needs access to your health data to provide personalized coaching insights.",
+        "NSHealthUpdateUsageDescription": "CoreSense needs access to update your health data for tracking purposes."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#000000"
+      },
+      "package": "com.coresense.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-apple-authentication",
+        {
+          "appleTeamId": "3RVGPKK5M8"
+        }
+      ]
+    ],
+    "scheme": "coresense",
+    "extra": {
+      "eas": {
+        "projectId": "80cffa60-3ef0-4265-a6ea-a077fe424627"
+      }
+    }
+  }
+}

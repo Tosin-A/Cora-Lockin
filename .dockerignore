@@ -1,0 +1,135 @@
+# Git and version control
+.git
+.gitignore
+.gitattributes
+
+# Docker files (except the main Dockerfile)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Node modules
+*/node_modules/
+*/.npm/
+*/.yarn/
+
+# React Native/Expo
+coresense/.expo/
+coresense/dist/
+coresense/web-build/
+
+# ML model files (large files)
+tosin-coach/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# Log files
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache directories
+.cache/
+.temp/
+tmp/
+
+# Environment files (keep template but exclude actual secrets)
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+htmlcov/
+
+# Documentation builds
+docs/_build/
+
+# Backup files
+*.backup
+*.bak
+*.orig
+
+# Large data files
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Exclude build artifacts
+*.egg-info/
+dist/
+build/
