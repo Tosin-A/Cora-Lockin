@@ -214,6 +214,49 @@ CREATE INDEX IF NOT EXISTS idx_coach_messages_user ON coach_messages(user_id, cr
 CREATE INDEX IF NOT EXISTS idx_coach_messages_unread ON coach_messages(user_id, read_in_app) WHERE read_in_app = false;
 
 -- ============================================
+-- SECTION 6B: CHAT MESSAGES
+-- Chat messages for coach conversations (source of truth for chat history)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  chat_id UUID NOT NULL,
+  userid UUID NOT NULL,  -- Note: uses 'userid' not 'user_id' for compatibility
+  content TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
+  sender_type TEXT NOT NULL CHECK (sender_type IN ('user', 'gpt')),
+  message_type TEXT DEFAULT 'text',
+  read_in_app BOOLEAN DEFAULT false,
+  delivered BOOLEAN DEFAULT false,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fast user message lookups
+CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(userid, created_at DESC);
+
+-- Index for chat thread lookups
+CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, created_at DESC);
+
+-- Enable RLS on messages table
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+
+-- Users can view own messages
+DROP POLICY IF EXISTS "Users view own messages" ON messages;
+CREATE POLICY "Users view own messages" ON messages
+  FOR SELECT USING (auth.uid() = userid);
+
+-- Users can insert own messages
+DROP POLICY IF EXISTS "Users insert own messages" ON messages;
+CREATE POLICY "Users insert own messages" ON messages
+  FOR INSERT WITH CHECK (auth.uid() = userid);
+
+-- Service role can manage all messages
+DROP POLICY IF EXISTS "Service role manage messages" ON messages;
+CREATE POLICY "Service role manage messages" ON messages
+  FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+
+-- ============================================
 -- SECTION 7: DAILY STATS
 -- Aggregated daily statistics for performance
 -- ============================================
@@ -667,6 +710,7 @@ AND tablename IN (
   'insights',
   'user_streaks',
   'coach_messages',
+  'messages',
   'daily_stats',
   'weekly_summaries',
   'prompt_templates',

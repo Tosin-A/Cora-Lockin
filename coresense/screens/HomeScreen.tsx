@@ -116,8 +116,8 @@ export default function HomeScreen() {
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Whats good';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 18) return 'Long morning ahlie';
+    return 'End of the day';
   };
 
   const firstName = profile?.username || 'there';
@@ -262,7 +262,7 @@ export default function HomeScreen() {
               <Text style={styles.coachMessageText}>{homeData.lastCoachMessage.text}</Text>
               <View style={styles.messageHint}>
                 <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
-                <Text style={styles.messageHintText}>Tap to continue conversation</Text>
+                <Text style={styles.messageHintText}>Continue conversation</Text>
               </View>
             </Card>
           </TouchableOpacity>

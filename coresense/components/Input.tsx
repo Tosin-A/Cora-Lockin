@@ -27,7 +27,7 @@ export const Input: React.FC<InputProps> = ({ label, error, style, ...props }) =
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   label: {
     ...Typography.bodySmall,
@@ -40,9 +40,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: BorderRadius.small,
-    padding: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    minHeight: 44,
     color: Colors.textPrimary,
-    minHeight: 48,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   inputError: {
     borderColor: Colors.error,
@@ -53,6 +56,8 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
 });
+
+
 
 
 

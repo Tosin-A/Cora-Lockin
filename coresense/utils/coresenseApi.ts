@@ -4,11 +4,11 @@
  * NO mock data - all data comes from authenticated user's database records.
  */
 
-import { supabase } from './supabase';
-import type { User } from '../types';
+import { supabase } from "./supabase";
+import type { User } from "../types";
 
 // Get API URL from environment
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8000";
 
 // Types for API responses
 export interface HomeData {
@@ -36,7 +36,7 @@ export interface Pattern {
   category: string;
   interpretation: string;
   expandedContent?: string;
-  trend: 'up' | 'down' | 'stable';
+  trend: "up" | "down" | "stable";
   trendValue?: string;
   dataPoints: number[];
 }
@@ -69,8 +69,8 @@ export interface SuggestedAction {
   title: string;
   subtitle?: string;
   duration?: string;
-  category: 'focus' | 'wellness' | 'habit' | 'reflection' | 'movement';
-  priority: 'high' | 'medium' | 'low';
+  category: "focus" | "wellness" | "habit" | "reflection" | "movement";
+  priority: "high" | "medium" | "low";
   completed: boolean;
   completedAt?: string;
 }
@@ -86,7 +86,7 @@ export interface Commitment {
 export type UserProfile = User;
 
 export interface UserPreferences {
-  messagingStyle: 'soft' | 'balanced' | 'firm';
+  messagingStyle: "soft" | "balanced" | "firm";
   messagingFrequency: number;
   quietHoursEnabled: boolean;
   quietHoursStart: string;
@@ -111,10 +111,15 @@ export interface Streaks {
 
 // Helper to get auth token
 async function getAuthToken(): Promise<string | null> {
-  console.log('[coresenseApi] 🔐 Getting auth session...');
-  const { data: { session } } = await supabase.auth.getSession();
+  console.log("[coresenseApi] 🔐 Getting auth session...");
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const token = session?.access_token || null;
-  console.log('[coresenseApi] 🔑 Auth token status:', token ? 'present' : 'missing');
+  console.log(
+    "[coresenseApi] 🔑 Auth token status:",
+    token ? "present" : "missing"
+  );
   return token;
 }
 
@@ -122,40 +127,39 @@ async function getAuthToken(): Promise<string | null> {
 async function apiRequest<T>(
   endpoint: string,
   options: {
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    method?: "GET" | "POST" | "PUT" | "DELETE";
     body?: any;
   } = {}
 ): Promise<{ data: T | null; error: string | null }> {
   try {
     const token = await getAuthToken();
-    
+
     if (!token) {
-      return { data: null, error: 'Not authenticated' };
+      return { data: null, error: "Not authenticated" };
     }
-    
+
     const response = await fetch(`${API_URL}${endpoint}`, {
-      method: options.method || 'GET',
+      method: options.method || "GET",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      return { 
-        data: null, 
-        error: errorData.detail || `Request failed: ${response.status}` 
+      return {
+        data: null,
+        error: errorData.detail || `Request failed: ${response.status}`,
       };
     }
-    
+
     const data = await response.json();
     return { data, error: null };
-    
   } catch (error: any) {
     console.error(`API error (${endpoint}):`, error);
-    return { data: null, error: error.message || 'Request failed' };
+    return { data: null, error: error.message || "Request failed" };
   }
 }
 
@@ -167,8 +171,11 @@ async function apiRequest<T>(
  * Get all data needed for the home screen.
  * Returns real user data only - no mock values.
  */
-export async function getHomeData(): Promise<{ data: HomeData | null; error: string | null }> {
-  return apiRequest<HomeData>('/api/v1/home/data');
+export async function getHomeData(): Promise<{
+  data: HomeData | null;
+  error: string | null;
+}> {
+  return apiRequest<HomeData>("/api/v1/home/data");
 }
 
 // ============================================================================
@@ -179,17 +186,22 @@ export async function getHomeData(): Promise<{ data: HomeData | null; error: str
  * Get insights for the insights screen.
  * Returns patterns and summaries generated from real user data.
  */
-export async function getInsights(): Promise<{ data: InsightsData | null; error: string | null }> {
-  return apiRequest<InsightsData>('/api/v1/insights');
+export async function getInsights(): Promise<{
+  data: InsightsData | null;
+  error: string | null;
+}> {
+  return apiRequest<InsightsData>("/api/v1/insights");
 }
 
 /**
  * Save an insight to favorites.
  */
-export async function saveInsight(insightId: string): Promise<{ success: boolean; error: string | null }> {
+export async function saveInsight(
+  insightId: string
+): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/insights/${insightId}/save`,
-    { method: 'POST' }
+    { method: "POST" }
   );
   return { success: data?.success || false, error };
 }
@@ -197,10 +209,12 @@ export async function saveInsight(insightId: string): Promise<{ success: boolean
 /**
  * Dismiss an insight.
  */
-export async function dismissInsight(insightId: string): Promise<{ success: boolean; error: string | null }> {
+export async function dismissInsight(
+  insightId: string
+): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/insights/${insightId}/dismiss`,
-    { method: 'POST' }
+    { method: "POST" }
   );
   return { success: data?.success || false, error };
 }
@@ -212,22 +226,25 @@ export async function dismissInsight(insightId: string): Promise<{ success: bool
 /**
  * Get today's engagement prompt.
  */
-export async function getDailyPrompt(): Promise<{ data: DailyPrompt | null; error: string | null }> {
-  return apiRequest<DailyPrompt>('/api/v1/engagement/prompt');
+export async function getDailyPrompt(): Promise<{
+  data: DailyPrompt | null;
+  error: string | null;
+}> {
+  return apiRequest<DailyPrompt>("/api/v1/engagement/prompt");
 }
 
 /**
  * Answer the daily prompt.
  */
 export async function answerPrompt(
-  promptId: string, 
+  promptId: string,
   response: string
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
-    '/api/v1/engagement/prompt/answer',
-    { 
-      method: 'POST',
-      body: { prompt_id: promptId, response }
+    "/api/v1/engagement/prompt/answer",
+    {
+      method: "POST",
+      body: { prompt_id: promptId, response },
     }
   );
   return { success: data?.success || false, error };
@@ -236,17 +253,22 @@ export async function answerPrompt(
 /**
  * Get AI-suggested actions.
  */
-export async function getSuggestedActions(): Promise<{ data: SuggestedAction[] | null; error: string | null }> {
-  return apiRequest<SuggestedAction[]>('/api/v1/engagement/actions');
+export async function getSuggestedActions(): Promise<{
+  data: SuggestedAction[] | null;
+  error: string | null;
+}> {
+  return apiRequest<SuggestedAction[]>("/api/v1/engagement/actions");
 }
 
 /**
  * Complete an action.
  */
-export async function completeAction(actionId: string): Promise<{ success: boolean; error: string | null }> {
+export async function completeAction(
+  actionId: string
+): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/engagement/actions/${actionId}/complete`,
-    { method: 'POST' }
+    { method: "POST" }
   );
   return { success: data?.success || false, error };
 }
@@ -254,21 +276,22 @@ export async function completeAction(actionId: string): Promise<{ success: boole
 /**
  * Record "I Did It" completion.
  */
-export async function recordDidIt(): Promise<{ 
-  success: boolean; 
-  newTotal: number; 
+export async function recordDidIt(): Promise<{
+  success: boolean;
+  newTotal: number;
   streak: number;
-  error: string | null 
+  error: string | null;
 }> {
-  const { data, error } = await apiRequest<{ success: boolean; newTotal: number; streak: number }>(
-    '/api/v1/engagement/did-it',
-    { method: 'POST' }
-  );
-  return { 
-    success: data?.success || false, 
+  const { data, error } = await apiRequest<{
+    success: boolean;
+    newTotal: number;
+    streak: number;
+  }>("/api/v1/engagement/did-it", { method: "POST" });
+  return {
+    success: data?.success || false,
     newTotal: data?.newTotal || 0,
     streak: data?.streak || 0,
-    error 
+    error,
   };
 }
 
@@ -279,17 +302,22 @@ export async function recordDidIt(): Promise<{
 /**
  * Get active commitments.
  */
-export async function getCommitments(): Promise<{ data: Commitment[] | null; error: string | null }> {
-  return apiRequest<Commitment[]>('/api/v1/commitments');
+export async function getCommitments(): Promise<{
+  data: Commitment[] | null;
+  error: string | null;
+}> {
+  return apiRequest<Commitment[]>("/api/v1/commitments");
 }
 
 /**
  * Check in on a commitment.
  */
-export async function checkInCommitment(commitmentId: string): Promise<{ success: boolean; error: string | null }> {
+export async function checkInCommitment(
+  commitmentId: string
+): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/commitments/${commitmentId}/check-in`,
-    { method: 'POST' }
+    { method: "POST" }
   );
   return { success: data?.success || false, error };
 }
@@ -301,22 +329,28 @@ export async function checkInCommitment(commitmentId: string): Promise<{ success
 /**
  * Get the last message from the coach.
  */
-export async function getLastCoachMessage(): Promise<{ 
+export async function getLastCoachMessage(): Promise<{
   data: { id: string; text: string; timestamp: string; read: boolean } | null;
-  error: string | null 
+  error: string | null;
 }> {
-  return apiRequest('/api/v1/coach/last-message');
+  return apiRequest("/api/v1/coach/last-message");
 }
 
 /**
  * Get recent coach messages.
  */
 export async function getCoachMessages(
-  limit: number = 20, 
+  limit: number = 20,
   offset: number = 0
-): Promise<{ 
-  data: Array<{ id: string; text: string; direction: string; timestamp: string; read: boolean }> | null;
-  error: string | null 
+): Promise<{
+  data: Array<{
+    id: string;
+    text: string;
+    direction: string;
+    timestamp: string;
+    read: boolean;
+  }> | null;
+  error: string | null;
 }> {
   return apiRequest(`/api/v1/coach/messages?limit=${limit}&offset=${offset}`);
 }
@@ -327,20 +361,44 @@ export async function getCoachMessages(
 export async function sendChatMessage(
   userId: string,
   message: string,
-  context?: any
-): Promise<{ data: { messages: string[]; personality_score: number; context_used: string[]; variation_applied: boolean } | null; error: string | null }> {
-  return apiRequest(
-    '/api/v1/coach/custom-gpt/chat',
-    { 
-      method: 'POST',
-      body: { 
-        message,
-        user_id: userId, // Send in body instead of query param
-        context: context || {},
-        response_type: "coaching"
-      }
-    }
-  );
+  context?: any,
+  clientTempId?: string
+): Promise<{
+  data: {
+    messages: string[];
+    personality_score: number;
+    context_used: string[];
+    variation_applied: boolean;
+    response_type: string;
+    thread_id?: string;
+    run_id?: string; // OpenAI run ID for delta tracking (Phase 4)
+    function_calls: any[];
+    usage_stats?: any;
+    saved_ids?: {
+      user_message?: string;
+      coach_message_0?: string;
+      assistant_temp_ids?: string[]; // Temp IDs for assistant messages (Phase 4)
+    };
+    client_temp_id?: string;
+  } | null;
+  error: string | null;
+}> {
+  const requestBody: any = {
+    message,
+    user_id: userId,
+    context: context || {},
+    response_type: "coaching",
+  };
+
+  // Include client_temp_id if provided (for reconciliation)
+  if (clientTempId) {
+    requestBody.client_temp_id = clientTempId;
+  }
+
+  return apiRequest("/api/v1/coach/custom-gpt/chat", {
+    method: "POST",
+    body: requestBody,
+  });
 }
 
 /**
@@ -348,13 +406,30 @@ export async function sendChatMessage(
  */
 export async function getChatHistory(
   userId: string,
-  limit: number = 50, 
+  limit: number = 50,
   offset: number = 0
-): Promise<{ 
-  data: { messages: Array<{ id: string; text: string; direction: string; timestamp: string; read: boolean }>; has_more: boolean } | null;
-  error: string | null 
+): Promise<{
+  data: {
+    messages: Array<{
+      id: string;
+      text: string;
+      content: string; // Alternative field name from backend
+      direction: string;
+      sender_type: string; // "user" or "gpt"
+      timestamp: string;
+      created_at: string; // Backend field name
+      read: boolean;
+      chat_id: string; // Link to conversation
+      run_id?: string; // OpenAI run ID (Phase 4)
+      assistant_temp_id?: string; // Temp ID for assistant messages (Phase 4)
+    }>;
+    has_more: boolean;
+  } | null;
+  error: string | null;
 }> {
-  return apiRequest(`/api/v1/coach/history/${userId}?limit=${limit}&offset=${offset}`);
+  return apiRequest(
+    `/api/v1/coach/history/${userId}?limit=${limit}&offset=${offset}`
+  );
 }
 
 // ============================================================================
@@ -364,8 +439,11 @@ export async function getChatHistory(
 /**
  * Get user profile.
  */
-export async function getProfile(): Promise<{ data: UserProfile | null; error: string | null }> {
-  return apiRequest<UserProfile>('/api/v1/profile');
+export async function getProfile(): Promise<{
+  data: UserProfile | null;
+  error: string | null;
+}> {
+  return apiRequest<UserProfile>("/api/v1/profile");
 }
 
 /**
@@ -376,68 +454,75 @@ export async function updateProfile(updates: {
   username?: string;
   avatar_url?: string;
 }): Promise<{ success: boolean; error: string | null }> {
-  console.log('[coresenseApi] 🔄 updateProfile called with updates:', updates);
-  
+  console.log("[coresenseApi] 🔄 updateProfile called with updates:", updates);
+
   try {
     const token = await getAuthToken();
-    console.log('[coresenseApi] 🔑 Auth token obtained:', token ? 'present' : 'missing');
-    
+    console.log(
+      "[coresenseApi] 🔑 Auth token obtained:",
+      token ? "present" : "missing"
+    );
+
     if (!token) {
-      console.log('[coresenseApi] ❌ No auth token available');
-      return { success: false, error: 'Not authenticated' };
+      console.log("[coresenseApi] ❌ No auth token available");
+      return { success: false, error: "Not authenticated" };
     }
-    
-    console.log('[coresenseApi] 🌐 Making API request to /api/v1/profile...');
+
+    console.log("[coresenseApi] 🌐 Making API request to /api/v1/profile...");
     const response = await fetch(`${API_URL}/api/v1/profile`, {
-      method: 'PUT',
+      method: "PUT",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(updates),
     });
-    
-    console.log('[coresenseApi] 📡 API response status:', response.status);
-    
+
+    console.log("[coresenseApi] 📡 API response status:", response.status);
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.log('[coresenseApi] ❌ API request failed:', errorData);
-      return { 
-        success: false, 
-        error: errorData.detail || `Request failed: ${response.status}` 
+      console.log("[coresenseApi] ❌ API request failed:", errorData);
+      return {
+        success: false,
+        error: errorData.detail || `Request failed: ${response.status}`,
       };
     }
-    
+
     const data = await response.json();
-    console.log('[coresenseApi] ✅ API request successful:', data);
+    console.log("[coresenseApi] ✅ API request successful:", data);
     return { success: true, error: null };
-    
   } catch (error: any) {
-    console.error('[coresenseApi] 💥 Exception during API request:', error);
-    return { success: false, error: error.message || 'Request failed' };
+    console.error("[coresenseApi] 💥 Exception during API request:", error);
+    return { success: false, error: error.message || "Request failed" };
   }
 }
 
 /**
  * Get user preferences.
  */
-export async function getPreferences(): Promise<{ data: UserPreferences | null; error: string | null }> {
-  return apiRequest<UserPreferences>('/api/v1/preferences');
+export async function getPreferences(): Promise<{
+  data: UserPreferences | null;
+  error: string | null;
+}> {
+  return apiRequest<UserPreferences>("/api/v1/preferences");
 }
 
 /**
  * Update user preferences.
  */
-export async function updatePreferences(updates: Partial<{
-  messaging_style: string;
-  messaging_frequency: number;
-  quiet_hours_enabled: boolean;
-  quiet_hours_start: string;
-  quiet_hours_end: string;
-}>): Promise<{ success: boolean; error: string | null }> {
+export async function updatePreferences(
+  updates: Partial<{
+    messaging_style: string;
+    messaging_frequency: number;
+    quiet_hours_enabled: boolean;
+    quiet_hours_start: string;
+    quiet_hours_end: string;
+  }>
+): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
-    '/api/v1/preferences',
-    { method: 'PUT', body: updates }
+    "/api/v1/preferences",
+    { method: "PUT", body: updates }
   );
   return { success: data?.success || false, error };
 }
@@ -449,42 +534,140 @@ export async function updatePreferences(updates: Partial<{
 /**
  * Get health data summary.
  */
-export async function getHealthSummary(): Promise<{ 
+export async function getHealthSummary(): Promise<{
   data: {
     weeklySteps: Array<{ date: string; value: number }>;
     weeklySleep: Array<{ date: string; value: number }>;
     averages: { steps: number; sleep: number };
   } | null;
-  error: string | null 
+  error: string | null;
 }> {
-  return apiRequest('/api/v1/health/summary');
+  return apiRequest("/api/v1/health/summary");
 }
 
 // ============================================================================
-// STREAKS API
+// STREAKS API (Simplified Schema)
 // ============================================================================
 
 /**
- * Get all user streaks.
+ * Get user's current streak (simplified schema).
  */
-export async function getStreaks(): Promise<{ data: Streaks | null; error: string | null }> {
-  return apiRequest<Streaks>('/api/v1/streaks');
+export async function getStreak(): Promise<{
+  data: {
+    currentStreak: number;
+    longestStreak: number;
+    lastActivityDate: string | null;
+    userTimezone: string;
+  } | null;
+  error: string | null;
+}> {
+  return apiRequest<{
+    currentStreak: number;
+    longestStreak: number;
+    lastActivityDate: string | null;
+    userTimezone: string;
+  }>("/api/v1/streak");
+}
+
+/**
+ * Record a streak activity.
+ * @param timezone - User's timezone (e.g., 'Europe/London')
+ */
+export async function recordStreak(timezone: string = "UTC"): Promise<{
+  data: {
+    success: boolean;
+    currentStreak: number;
+    longestStreak: number;
+    lastActivityDate: string;
+    userTimezone: string;
+  } | null;
+  error: string | null;
+}> {
+  return apiRequest<{
+    success: boolean;
+    currentStreak: number;
+    longestStreak: number;
+    lastActivityDate: string;
+    userTimezone: string;
+  }>("/api/v1/streak/record", {
+    method: "POST",
+    body: { timezone },
+  });
+}
+
+/**
+ * Get all user streaks (legacy multi-type endpoint).
+ * @deprecated Use getStreak() for the simplified schema
+ */
+export async function getStreaksLegacy(): Promise<{
+  data: {
+    check_in?: {
+      current: number;
+      longest: number;
+      lastActivity: string;
+      userTimezone: string;
+    };
+    commitment?: {
+      current: number;
+      longest: number;
+      lastActivity: string;
+      userTimezone: string;
+    };
+    engagement?: {
+      current: number;
+      longest: number;
+      lastActivity: string;
+      userTimezone: string;
+    };
+    health_sync?: {
+      current: number;
+      longest: number;
+      lastActivity: string;
+      userTimezone: string;
+    };
+  } | null;
+  error: string | null;
+}> {
+  return apiRequest<{
+    check_in?: {
+      current: number;
+      longest: number;
+      lastActivity: string;
+      userTimezone: string;
+    };
+    commitment?: {
+      current: number;
+      longest: number;
+      lastActivity: string;
+      userTimezone: string;
+    };
+    engagement?: {
+      current: number;
+      longest: number;
+      lastActivity: string;
+      userTimezone: string;
+    };
+    health_sync?: {
+      current: number;
+      longest: number;
+      lastActivity: string;
+      userTimezone: string;
+    };
+  }>("/api/v1/streaks");
 }
 
 /**
  * Get message usage statistics
  */
-export async function getMessageUsage(
-  userId: string
-): Promise<{ 
-  data: { 
-    messages_used: number; 
-    messages_limit: number; 
-    is_pro: boolean; 
+export async function getMessageUsage(userId: string): Promise<{
+  data: {
+    messages_used: number;
+    messages_limit: number;
+    is_pro: boolean;
     messages_remaining: number;
     usage_percentage: number;
-  } | null; 
-  error: string | null 
+  } | null;
+  error: string | null;
 }> {
   return apiRequest(`/api/v1/coach/usage/${userId}`);
 }
@@ -497,7 +680,7 @@ export async function upgradeToPro(
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/coach/upgrade/${userId}`,
-    { method: 'POST' }
+    { method: "POST" }
   );
   return { success: data?.success || false, error };
 }
@@ -506,41 +689,43 @@ export async function upgradeToPro(
 export const coresenseApi = {
   // Home
   getHomeData,
-  
+
   // Insights
   getInsights,
   saveInsight,
   dismissInsight,
-  
+
   // Engagement
   getDailyPrompt,
   answerPrompt,
   getSuggestedActions,
   completeAction,
   recordDidIt,
-  
+
   // Commitments
   getCommitments,
   checkInCommitment,
-  
+
   // Coach
   getLastCoachMessage,
   getCoachMessages,
   sendChatMessage,
   getChatHistory,
-  
+
   // Profile
   getProfile,
   updateProfile,
   getPreferences,
   updatePreferences,
-  
+
   // Health
   getHealthSummary,
-  
+
   // Streaks
-  getStreaks,
-  
+  getStreak,
+  recordStreak,
+  getStreaksLegacy,
+
   // Message Limits
   getMessageUsage,
   upgradeToPro,

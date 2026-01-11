@@ -3,7 +3,7 @@
  * Handles text input, sending, and quick actions for chat
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   TextInput,
@@ -13,11 +13,10 @@ import {
   Text,
   ScrollView,
   Alert,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
-import type { QuickAction } from '../stores/chatStore';
-
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Colors, Typography, Spacing, BorderRadius } from "../constants/theme";
+import type { QuickAction } from "../stores/chatStore";
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -25,7 +24,6 @@ interface ChatInputProps {
   onQuickActionPress?: (actionId: string) => void;
   disabled?: boolean;
   placeholder?: string;
-
 }
 
 export default function ChatInput({
@@ -33,10 +31,9 @@ export default function ChatInput({
   quickActions = [],
   onQuickActionPress,
   disabled = false,
-  placeholder = 'Type a message...',
-
+  placeholder = "Type a message...",
 }: ChatInputProps) {
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [showQuickActions, setShowQuickActions] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
@@ -51,7 +48,7 @@ export default function ChatInput({
   const handleSend = () => {
     if (message.trim() && !disabled) {
       onSendMessage(message.trim());
-      setMessage('');
+      setMessage("");
       setShowQuickActions(false);
     }
   };
@@ -99,8 +96,6 @@ export default function ChatInput({
 
       {/* Main Input Row */}
       <View style={styles.inputRow}>
-
-
         {/* Text Input */}
         <View style={styles.inputContainer}>
           <TextInput
@@ -116,12 +111,10 @@ export default function ChatInput({
             onSubmitEditing={handleSend}
             returnKeyType="send"
           />
-          
+
           {/* Character Counter */}
           {message.length > 400 && (
-            <Text style={styles.characterCounter}>
-              {500 - message.length}
-            </Text>
+            <Text style={styles.characterCounter}>{500 - message.length}</Text>
           )}
         </View>
 
@@ -139,7 +132,7 @@ export default function ChatInput({
             size={20}
             color={
               message.trim() && !disabled
-                ? Colors.primary
+                ? Colors.textPrimary
                 : Colors.textTertiary
             }
           />
@@ -152,22 +145,18 @@ export default function ChatInput({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.background,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
   },
   quickActionsContainer: {
     backgroundColor: Colors.surface,
     paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
   quickActionsContent: {
     paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
   },
   quickActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.surfaceMedium,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
@@ -180,11 +169,11 @@ const styles = StyleSheet.create({
   quickActionText: {
     ...Typography.bodySmall,
     color: Colors.textPrimary,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     gap: Spacing.sm,
@@ -192,31 +181,34 @@ const styles = StyleSheet.create({
 
   inputContainer: {
     flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.medium,
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.large * 1.2,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
     maxHeight: 100,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   textInput: {
     ...Typography.body,
     color: Colors.textPrimary,
     maxHeight: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
+    lineHeight: 20,
+    paddingVertical: Spacing.sm,
   },
   characterCounter: {
     ...Typography.caption,
     color: Colors.textTertiary,
-    textAlign: 'right',
+    textAlign: "right",
     marginTop: Spacing.xs,
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   sendButtonDisabled: {
     backgroundColor: Colors.surfaceMedium,

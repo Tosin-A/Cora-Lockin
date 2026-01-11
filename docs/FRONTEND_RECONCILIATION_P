@@ -1,0 +1,307 @@
+# Frontend Implementation Plan: Assistant Message Reconciliation
+
+## Overview
+This plan outlines the changes needed in the React Native frontend to properly handle assistant message reconciliation using the new `run_id` and `assistant_temp_id` fields from the backend.
+
+## Current State
+The frontend already has:
+- `client_temp_id` reconciliation for user messages (working)
+- `/history` endpoint that fetches from Supabase DB
+- `waitForReconciliation` polling mechanism
+
+What's missing:
+- `assistant_temp_id` support for coach messages
+- Handling of `run_id` and `assistant_temp_ids` from the chat response
+- Delta message appending (instead of full replace)
+
+---
+
+## Implementation Steps
+
+### Step 1: Update ChatMessage Interface
+**File:** `coresense/stores/chatStore.ts`
+
+Add `assistant_temp_id` field to the `ChatMessage` interface:
+
+```typescript
+export interface ChatMessage {
+  // ... existing fields ...
+  
+  // Assistant message reconciliation (Phase 4)
+  assistant_temp_id?: string; // Temp ID for new assistant messages
+  run_id?: string;            // OpenAI run ID for delta tracking
+}
+```
+
+### Step 2: Update ChatStore State
+**File:** `coresense/stores/chatStore.ts`
+
+Add new state variables:
+
+```typescript
+interface ChatStore {
+  // ... existing state ...
+  
+  // Assistant message reconciliation state
+  pendingAssistantTempIds: string[]; // assistant_temp_ids waiting for /history
+  lastRunId: string | null;          // Track last processed run
+  
+  // ... existing actions ...
+  
+  // New actions
+  setAssistantTempIds: (tempIds: string[]) => void;
+  clearAssistantTempIds: () => void;
+  appendNewMessages: (newMessages: ChatMessage[]) => void;
+}
+```
+
+### Step 3: Update sendMessage Response Handling
+**File:** `coresense/stores/chatStore.ts`
+
+Update the `sendMessage` function to extract and store `assistant_temp_ids` from the response:
+
+```typescript
+// In sendMessage, after API call:
+if (data && data.saved_ids && data.saved_ids.assistant_temp_ids) {
+  const assistantTempIds = data.saved_ids.assistant_temp_ids;
+  const runId = data.run_id;
+  
+  // Store for reconciliation
+  set((state) => ({
+    pendingAssistantTempIds: [
+      ...state.pendingAssistantTempIds,
+      ...assistantTempIds
+    ],
+    lastRunId: runId,
+  }));
+  
+  // Wait for assistant messages to be reconciled too
+  await get().waitForAssistantReconciliation(assistantTempIds);
+}
+```
+
+### Step 4: Add waitForAssistantReconciliation
+**File:** `coresense/stores/chatStore.ts`
+
+Add new reconciliation method:
+
+```typescript
+waitForAssistantReconciliation: async (
+  tempIds: string[],
+  maxAttempts = 20
+) => {
+  const { pendingAssistantTempIds, loadChatHistory, messages } = get();
+  
+  const waitingFor = tempIds.filter((id) =>
+    pendingAssistantTempIds.includes(id)
+  );
+  
+  if (waitingFor.length === 0) {
+    return true;
+  }
+  
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Load fresh history
+    await loadChatHistory({ useFullReplace: false, forceRefresh: true });
+    
+    const { messages: currentMessages } = get();
+    
+    // Check if assistant temp IDs have been reconciled
+    const reconciled = waitingFor.every((tempId) => {
+      const found = currentMessages.find(
+        (m) => m.assistant_temp_id === tempId
+      );
+      return found && !found.assistant_temp_id; // Reconciled if temp_id is cleared
+    });
+    
+    if (reconciled) {
+      console.log(`Assistant reconciliation complete after ${attempt + 1} attempt(s)`);
+      set((state) => ({
+        pendingAssistantTempIds: state.pendingAssistantTempIds.filter(
+          (id) => !waitingFor.includes(id)
+        ),
+      }));
+      return true;
+    }
+    
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(100 * Math.pow(2, attempt), 2000))
+    );
+  }
+  
+  return false;
+},
+```
+
+### Step 5: Update loadChatHistory for Delta Support
+**File:** `coresense/stores/chatStore.ts`
+
+Modify `loadChatHistory` to support delta mode:
+
+```typescript
+loadChatHistory: async (options = {}) => {
+  const { useFullReplace = true, forceRefresh = false } = options;
+  
+  // ... existing guard clauses ...
+  
+  const { data, error } = await coresenseApi.getChatHistory(user.id);
+  
+  if (!error && data) {
+    const formattedMessages: ChatMessage[] = (data.messages || []).map(
+      (msg: any) => ({
+        id: msg.id,
+        text: msg.content || msg.text,
+        sender: msg.sender_type === "gpt" ? "coach" : "user",
+        timestamp: new Date(msg.created_at || msg.timestamp),
+        status: "delivered",
+        assistant_temp_id: msg.assistant_temp_id,
+        run_id: msg.run_id,
+        client_temp_id: undefined,
+        isOptimistic: false,
+      })
+    );
+    
+    if (useFullReplace) {
+      // Full replace - /history is authoritative
+      set({ messages: formattedMessages, lastSyncedAt: new Date() });
+    } else {
+      // Delta mode - append only new messages
+      get().appendNewMessages(formattedMessages);
+    }
+  }
+  // ... rest of error handling ...
+},
+```
+
+### Step 6: Add appendNewMessages Helper
+**File:** `coresense/stores/chatStore.ts`
+
+Add new method for delta message appending:
+
+```typescript
+appendNewMessages: (newMessages: ChatMessage[]) => {
+  const { messages, lastRunId } = get();
+  
+  // Filter to only messages newer than the last known run
+  // or messages that don't exist in our current list
+  const existingIds = new Set(messages.map((m) => m.id));
+  const newOnly = newMessages.filter(
+    (m) => !existingIds.has(m.id)
+  );
+  
+  if (newOnly.length > 0) {
+    console.log(`Appending ${newOnly.length} new messages`);
+    set({
+      messages: [...messages, ...newOnly],
+      lastSyncedAt: new Date(),
+    });
+  }
+},
+```
+
+### Step 7: Update coresenseApi.ts
+**File:** `coresense/utils/coresenseApi.ts`
+
+Ensure the API response type includes the new fields:
+
+```typescript
+interface ChatResponse {
+  messages: string[];
+  personality_score: number;
+  context_used: string[];
+  variation_applied: boolean;
+  response_type: string;
+  thread_id?: string;
+  run_id?: string;          // NEW: Run ID for delta tracking
+  function_calls: any[];
+  usage_stats?: any;
+  saved_ids?: {
+    user_message?: string;
+    coach_message_0?: string;
+    assistant_temp_ids?: string[];  // NEW: Assistant temp IDs
+  };
+  client_temp_id?: string;
+}
+```
+
+---
+
+## Integration Flow
+
+### 1. User Sends Message
+```
+1. User types message
+2. Generate client_temp_id (existing)
+3. Create optimistic user message (existing)
+4. Send to API with client_temp_id (existing)
+5. 
+   NEW: Extract run_id and assistant_temp_ids from response
+6. Store assistant_temp_ids for reconciliation (NEW)
+7. Wait for user message + assistant message reconciliation (updated)
+8. /history returns fully reconciled messages
+```
+
+### 2. Message Reconciliation
+```
+Before (Problem):
+- /history returns ALL messages
+- Full replace causes UI flash
+- Duplicates possible on rapid sends
+
+After (Solution):
+- /history returns ALL messages (source of truth)
+- Full replace still used (simplest, no duplicates)
+- Assistant temp IDs ensure proper tracking
+- run_id enables future delta optimizations
+```
+
+### 3. Fast Navigation Handling
+```
+- Focus event triggers loadChatHistory
+- Skip if typing OR pending reconciliation
+- useFullReplace=true ensures single source of truth
+- No more "flash" from old messages reappearing
+```
+
+---
+
+## Migration Strategy
+
+1. **Phase 1: Add Fields (Safe)**
+   - Add `assistant_temp_id` and `run_id` to interface
+   - No behavior change yet
+
+2. **Phase 2: Extract from Response (Safe)**
+   - Store assistant_temp_ids from API response
+   - Still use full replace for now
+
+3. **Phase 3: Enable Reconciliation (Breaking)**
+   - Wait for assistant temp IDs to be reconciled
+   - This ensures coach messages are properly tracked
+
+4. **Phase 4: Delta Optimization (Optional)**
+   - Implement appendNewMessages for delta mode
+   - Reduces UI flash on message sends
+
+---
+
+## Testing Checklist
+
+- [ ] User message reconciliation still works
+- [ ] Assistant messages get reconciled after send
+- [ ] No duplicate messages on rapid sends
+- [ ] Fast navigation doesn't cause duplicates
+- [ ] Chat history loads correctly from /history
+- [ ] run_id is properly stored and accessible
+- [ ] assistant_temp_id matches between response and /history
+
+---
+
+## Files to Modify
+
+1. `coresense/stores/chatStore.ts` - Main implementation
+2. `coresense/utils/coresenseApi.ts` - Type definitions (if needed)
+
+## Files to Create (Optional)
+
+1. `docs/frontend_reconciliation_flow.md` - Detailed flow documentation
