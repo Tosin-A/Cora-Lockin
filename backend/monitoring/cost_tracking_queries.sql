@@ -446,3 +446,4 @@ SELECT
     ROUND(AVG(response_time_ms), 0) as avg_response_time_ms
 FROM ai_call_logs
 WHERE created_at >= CURRENT_DATE - INTERVAL '7 days';
+c                                                                                                                                                                                                                                                      
