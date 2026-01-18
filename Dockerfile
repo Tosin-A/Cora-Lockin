@@ -2,7 +2,7 @@
 # Build from project root: docker build -f Dockerfile -t coresense-backend .
 # Or use the backend/Dockerfile when building from backend directory
 
-FROM python:3.14-slim
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -22,14 +22,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy backend requirements and install dependencies
-COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+COPY backend/requirements-prod.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy backend code (preserving backend/ structure for imports)
 COPY backend/ /app/backend/
-
-# Set working directory to backend
-WORKDIR /app/backend
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app && \
@@ -37,11 +34,11 @@ RUN useradd --create-home --shell /bin/bash app && \
 USER app
 
 # Expose port
-EXPOSE ${PORT:-8000}
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command - main.py handles path setup internally
-CMD sh -c "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"
+# Default command - PYTHONPATH=/app allows 'backend.main' to resolve
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
