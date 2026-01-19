@@ -21,7 +21,7 @@ Deploy the CoreSense app to your iPhone for testing/development use.
 npm install -g @railway/cli
 
 # Login and deploy
-cd /Users/ayanfex/Desktop/Personal\ Coding\ Projects/Ironamns
+cd /Users/ayanfex/Desktop/Projects/Ironamns
 railway login
 railway init
 # Select your Railway project or create new

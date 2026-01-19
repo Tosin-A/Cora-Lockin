@@ -27,6 +27,6 @@
 
 ## Notes
 
-- Backend folder: /Users/ayanfex/Desktop/Personal Coding Projects/Ironamns/backend
-- Mobile app folder: /Users/ayanfex/Desktop/Personal Coding Projects/Ironamns/coresense
+- Backend folder: /Users/ayanfex/Desktop/Projects/Ironamns/backend
+- Mobile app folder: /Users/ayanfex/Desktop/Projects/Ironamns/coresense
 - Railway project will be created for backend deployment

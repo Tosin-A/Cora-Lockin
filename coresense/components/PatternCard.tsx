@@ -15,7 +15,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 interface PatternCardProps {
   title: string;
-  category: 'sleep' | 'mood' | 'productivity' | 'habits';
+  category: 'sleep' | 'mood' | 'productivity' | 'habits' | string; // Allow any string for flexibility
   interpretation: string;
   expandedContent?: string;
   trend: 'up' | 'down' | 'stable';
@@ -41,7 +41,9 @@ const categoryConfig = {
     icon: 'checkmark-circle',
     color: '#6BCB77',
   },
-};
+} as const;
+
+type CategoryKey = keyof typeof categoryConfig;
 
 export default function PatternCard({
   title,
@@ -54,7 +56,8 @@ export default function PatternCard({
   onSave,
 }: PatternCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const config = categoryConfig[category];
+  // Fallback to 'habits' if category doesn't match any known category
+  const config = (categoryConfig[category as CategoryKey] || categoryConfig.habits);
 
   const handlePress = () => {
     if (expandedContent) {

@@ -5,10 +5,45 @@
  */
 
 import { supabase } from "./supabase";
+import { Platform } from "react-native";
 import type { User } from "../types";
 
-// Get API URL from environment
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8000";
+/**
+ * Get the API base URL based on environment and platform.
+ *
+ * Priority:
+ * 1. EXPO_PUBLIC_API_URL environment variable (for production/staging)
+ * 2. Platform-specific defaults for local development:
+ *    - iOS Simulator: localhost (shares host network)
+ *    - Android Emulator: 10.0.2.2 (special alias for host)
+ *    - Physical device: requires EXPO_PUBLIC_API_URL to be set
+ */
+function getApiUrl(): string {
+  // Use environment variable if set
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (envUrl && envUrl.trim() !== "") {
+    return envUrl;
+  }
+
+  // Development fallbacks by platform
+  if (__DEV__) {
+    if (Platform.OS === "android") {
+      // Android emulator uses 10.0.2.2 to reach host machine
+      return "http://10.0.2.2:8000";
+    }
+    // iOS simulator shares host network, use localhost
+    return "http://localhost:8000";
+  }
+
+  // Production should always have EXPO_PUBLIC_API_URL set
+  console.warn("[coresenseApi] No API URL configured for production!");
+  return "http://localhost:8000";
+}
+
+const API_URL = getApiUrl();
+
+// Log the API URL on startup for debugging
+console.log(`[coresenseApi] 🌐 Using API URL: ${API_URL} (Platform: ${Platform.OS}, DEV: ${__DEV__})`);
 
 // Types for API responses
 export interface HomeData {
@@ -118,9 +153,64 @@ async function getAuthToken(): Promise<string | null> {
   const token = session?.access_token || null;
   console.log(
     "[coresenseApi] 🔑 Auth token status:",
-    token ? "present" : "missing"
+    token ? "present" : "missing",
   );
   return token;
+}
+
+/**
+ * Categorize network errors for better debugging and user feedback.
+ */
+function categorizeNetworkError(error: any, _endpoint: string): {
+  message: string;
+  category: "network" | "timeout" | "auth" | "server" | "unknown";
+  isRetryable: boolean;
+} {
+  const errorMessage = error?.message?.toLowerCase() || "";
+
+  // Timeout errors
+  if (error?.name === "AbortError" || errorMessage.includes("timeout")) {
+    return {
+      message: "Request timed out - server may be slow or unreachable",
+      category: "timeout",
+      isRetryable: true,
+    };
+  }
+
+  // Network connectivity errors (fetch fails before getting response)
+  if (
+    errorMessage.includes("network request failed") ||
+    errorMessage.includes("failed to fetch") ||
+    errorMessage.includes("network error") ||
+    errorMessage.includes("connection refused") ||
+    errorMessage.includes("econnrefused")
+  ) {
+    return {
+      message: `Cannot reach server at ${API_URL}. Is the backend running?`,
+      category: "network",
+      isRetryable: true,
+    };
+  }
+
+  // DNS resolution errors
+  if (
+    errorMessage.includes("getaddrinfo") ||
+    errorMessage.includes("dns") ||
+    errorMessage.includes("hostname")
+  ) {
+    return {
+      message: "Cannot resolve server hostname - check your network connection",
+      category: "network",
+      isRetryable: true,
+    };
+  }
+
+  // Default
+  return {
+    message: error?.message || "Request failed",
+    category: "unknown",
+    isRetryable: false,
+  };
 }
 
 // Helper for API requests
@@ -129,37 +219,108 @@ async function apiRequest<T>(
   options: {
     method?: "GET" | "POST" | "PUT" | "DELETE";
     body?: any;
-  } = {}
-): Promise<{ data: T | null; error: string | null }> {
+    timeout?: number;
+  } = {},
+): Promise<{
+  data: T | null;
+  error: string | null;
+  errorCategory?: "network" | "timeout" | "auth" | "server" | "unknown";
+  isRetryable?: boolean;
+}> {
+  const requestId = Math.random().toString(36).substring(7);
+  const startTime = Date.now();
+
+  console.log(
+    `[coresenseApi] 📤 [${requestId}] ${options.method || "GET"} ${endpoint}`,
+  );
+
   try {
     const token = await getAuthToken();
 
     if (!token) {
-      return { data: null, error: "Not authenticated" };
+      console.log(`[coresenseApi] ❌ [${requestId}] No auth token available`);
+      return { data: null, error: "Not authenticated", errorCategory: "auth" };
     }
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      method: options.method || "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
+    const timeoutMs = options.timeout || 10000; // Default 10 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return {
-        data: null,
-        error: errorData.detail || `Request failed: ${response.status}`,
-      };
+    try {
+      const fullUrl = `${API_URL}${endpoint}`;
+      console.log(`[coresenseApi] 🌐 [${requestId}] Full URL: ${fullUrl}`);
+
+      const response = await fetch(fullUrl, {
+        method: options.method || "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const duration = Date.now() - startTime;
+
+      console.log(
+        `[coresenseApi] 📥 [${requestId}] Response: ${response.status} (${duration}ms)`,
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          errorData.detail || `Request failed: ${response.status}`;
+        console.log(
+          `[coresenseApi] ⚠️ [${requestId}] Server error: ${errorMessage}`,
+        );
+        return {
+          data: null,
+          error: errorMessage,
+          errorCategory: "server",
+          isRetryable: response.status >= 500,
+        };
+      }
+
+      const data = await response.json();
+      return { data, error: null };
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      const duration = Date.now() - startTime;
+      const { message, category, isRetryable } = categorizeNetworkError(
+        fetchError,
+        endpoint,
+      );
+
+      console.error(
+        `[coresenseApi] 💥 [${requestId}] Fetch error after ${duration}ms:`,
+        {
+          message: fetchError.message,
+          name: fetchError.name,
+          category,
+          apiUrl: API_URL,
+        },
+      );
+
+      return { data: null, error: message, errorCategory: category, isRetryable };
     }
-
-    const data = await response.json();
-    return { data, error: null };
   } catch (error: any) {
-    console.error(`API error (${endpoint}):`, error);
-    return { data: null, error: error.message || "Request failed" };
+    const duration = Date.now() - startTime;
+    const { message, category, isRetryable } = categorizeNetworkError(
+      error,
+      endpoint,
+    );
+
+    console.error(
+      `[coresenseApi] 💥 [${requestId}] Exception after ${duration}ms:`,
+      {
+        message: error.message,
+        category,
+        apiUrl: API_URL,
+      },
+    );
+
+    return { data: null, error: message, errorCategory: category, isRetryable };
   }
 }
 
@@ -197,11 +358,11 @@ export async function getInsights(): Promise<{
  * Save an insight to favorites.
  */
 export async function saveInsight(
-  insightId: string
+  insightId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/insights/${insightId}/save`,
-    { method: "POST" }
+    { method: "POST" },
   );
   return { success: data?.success || false, error };
 }
@@ -210,11 +371,11 @@ export async function saveInsight(
  * Dismiss an insight.
  */
 export async function dismissInsight(
-  insightId: string
+  insightId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/insights/${insightId}/dismiss`,
-    { method: "POST" }
+    { method: "POST" },
   );
   return { success: data?.success || false, error };
 }
@@ -238,14 +399,14 @@ export async function getDailyPrompt(): Promise<{
  */
 export async function answerPrompt(
   promptId: string,
-  response: string
+  response: string,
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     "/api/v1/engagement/prompt/answer",
     {
       method: "POST",
       body: { prompt_id: promptId, response },
-    }
+    },
   );
   return { success: data?.success || false, error };
 }
@@ -264,11 +425,11 @@ export async function getSuggestedActions(): Promise<{
  * Complete an action.
  */
 export async function completeAction(
-  actionId: string
+  actionId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/engagement/actions/${actionId}/complete`,
-    { method: "POST" }
+    { method: "POST" },
   );
   return { success: data?.success || false, error };
 }
@@ -313,11 +474,11 @@ export async function getCommitments(): Promise<{
  * Check in on a commitment.
  */
 export async function checkInCommitment(
-  commitmentId: string
+  commitmentId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/commitments/${commitmentId}/check-in`,
-    { method: "POST" }
+    { method: "POST" },
   );
   return { success: data?.success || false, error };
 }
@@ -341,7 +502,7 @@ export async function getLastCoachMessage(): Promise<{
  */
 export async function getCoachMessages(
   limit: number = 20,
-  offset: number = 0
+  offset: number = 0,
 ): Promise<{
   data: Array<{
     id: string;
@@ -362,7 +523,7 @@ export async function sendChatMessage(
   userId: string,
   message: string,
   context?: any,
-  clientTempId?: string
+  clientTempId?: string,
 ): Promise<{
   data: {
     messages: string[];
@@ -407,7 +568,7 @@ export async function sendChatMessage(
 export async function getChatHistory(
   userId: string,
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
 ): Promise<{
   data: {
     messages: Array<{
@@ -428,7 +589,7 @@ export async function getChatHistory(
   error: string | null;
 }> {
   return apiRequest(
-    `/api/v1/coach/history/${userId}?limit=${limit}&offset=${offset}`
+    `/api/v1/coach/history/${userId}?limit=${limit}&offset=${offset}`,
   );
 }
 
@@ -460,7 +621,7 @@ export async function updateProfile(updates: {
     const token = await getAuthToken();
     console.log(
       "[coresenseApi] 🔑 Auth token obtained:",
-      token ? "present" : "missing"
+      token ? "present" : "missing",
     );
 
     if (!token) {
@@ -518,11 +679,11 @@ export async function updatePreferences(
     quiet_hours_enabled: boolean;
     quiet_hours_start: string;
     quiet_hours_end: string;
-  }>
+  }>,
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     "/api/v1/preferences",
-    { method: "PUT", body: updates }
+    { method: "PUT", body: updates },
   );
   return { success: data?.success || false, error };
 }
@@ -543,6 +704,80 @@ export async function getHealthSummary(): Promise<{
   error: string | null;
 }> {
   return apiRequest("/api/v1/health/summary");
+}
+
+// ============================================================================
+// WELLNESS API
+// ============================================================================
+
+/**
+ * Get wellness score.
+ */
+export async function getWellnessScore(date?: string): Promise<{
+  data: {
+    overall_score: number;
+    sleep_score: number;
+    activity_score: number;
+    nutrition_score: number;
+    mental_wellbeing_score: number;
+    hydration_score: number;
+    trend: string;
+    date: string;
+  } | null;
+  error: string | null;
+}> {
+  const endpoint = date
+    ? `/api/v1/wellness/score?target_date=${date}`
+    : "/api/v1/wellness/score";
+  return apiRequest(endpoint);
+}
+
+/**
+ * Log manual health data.
+ */
+export async function logManualHealthData(logData: {
+  log_type: string;
+  value?: number;
+  text_value?: string;
+  unit?: string;
+  notes?: string;
+}): Promise<{ success: boolean; error: string | null }> {
+  const { data, error } = await apiRequest<{ success: boolean }>(
+    "/api/v1/wellness/logs",
+    { method: "POST", body: logData },
+  );
+  return { success: data?.success || false, error };
+}
+
+/**
+ * Get wellness goals.
+ */
+export async function getWellnessGoals(status?: string): Promise<{
+  data: any[] | null;
+  error: string | null;
+}> {
+  const endpoint = status
+    ? `/api/v1/wellness/goals?status=${status}`
+    : "/api/v1/wellness/goals";
+  return apiRequest(endpoint);
+}
+
+/**
+ * Create wellness goal.
+ */
+export async function createWellnessGoal(goalData: {
+  goal_type: string;
+  target_value: number;
+  unit?: string;
+  period?: string;
+  start_date?: string;
+  end_date?: string;
+}): Promise<{ success: boolean; error: string | null }> {
+  const { data, error } = await apiRequest<{ success: boolean }>(
+    "/api/v1/wellness/goals",
+    { method: "POST", body: goalData },
+  );
+  return { success: data?.success || false, error };
 }
 
 // ============================================================================
@@ -676,11 +911,11 @@ export async function getMessageUsage(userId: string): Promise<{
  * Upgrade to pro plan (for testing)
  */
 export async function upgradeToPro(
-  userId: string
+  userId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   const { data, error } = await apiRequest<{ success: boolean }>(
     `/api/v1/coach/upgrade/${userId}`,
-    { method: "POST" }
+    { method: "POST" },
   );
   return { success: data?.success || false, error };
 }
@@ -721,6 +956,12 @@ export const coresenseApi = {
   // Health
   getHealthSummary,
 
+  // Wellness
+  getWellnessScore,
+  logManualHealthData,
+  getWellnessGoals,
+  createWellnessGoal,
+
   // Streaks
   getStreak,
   recordStreak,
@@ -732,5 +973,3 @@ export const coresenseApi = {
 };
 
 export default coresenseApi;
-
-

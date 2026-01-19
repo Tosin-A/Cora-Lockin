@@ -1,11 +1,10 @@
 /**
  * Insights Screen
- * Transform raw data into meaningful, bite-sized takeaways.
- * Includes health analytics, AI insights, and pattern recognition.
- * All data comes from real user records - no mock or placeholder data.
+ * Personalized health insights presented in a natural, conversational way.
+ * Focuses on what matters most to the user with clear, actionable guidance.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,10 +22,13 @@ import { LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
-import { WeeklySummaryCard, PatternCard, Card, StatTile } from '../components';
+import { WeeklySummaryCard, Card, StatTile, WellnessScoreCard } from '../components';
+import { InsightCard } from '../components/InsightCard';
 import { useAuthStore } from '../stores/authStore';
 import { useHealthStore } from '../stores/healthStore';
+import { useWellnessStore } from '../stores/wellnessStore';
 import { coresenseApi, InsightsData, Pattern } from '../utils/coresenseApi';
+import { formatInsight, groupInsightsByCategory, getWellnessGreeting } from '../utils/insightFormatter';
 import { format, subDays } from 'date-fns';
 
 const screenWidth = Dimensions.get('window').width;
@@ -54,6 +56,12 @@ export default function InsightsScreen() {
     loadFromSupabase: loadHealthFromSupabase,
   } = useHealthStore();
   
+  // Wellness store
+  const {
+    wellnessScore,
+    fetchWellnessScore,
+  } = useWellnessStore();
+  
   // Real data state
   const [insightsData, setInsightsData] = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,6 +83,10 @@ export default function InsightsScreen() {
         console.log('API not available, working offline');
       } else if (data) {
         setInsightsData(data);
+        // Update wellness score if included in response
+        if (data.wellnessScore) {
+          // Wellness score is already fetched separately, but we can use this as fallback
+        }
       }
     } catch (err: any) {
       // Silently handle network errors - app works offline
@@ -89,11 +101,12 @@ export default function InsightsScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
+      fetchWellnessScore();
       if (user) {
         initializeHealth();
         loadHealthFromSupabase(user.id);
       }
-    }, [fetchData, user])
+    }, [fetchData, fetchWellnessScore, user])
   );
 
   // Initialize health on mount
@@ -229,6 +242,27 @@ export default function InsightsScreen() {
   const weeklyStepsAvg = calculateWeeklyAverage(weeklySteps, 'steps');
   const weeklySleepAvg = calculateWeeklyAverage(weeklySleep, 'hours');
 
+  // Transform patterns into formatted insights
+  const formattedInsights = useMemo(() => {
+    if (!insightsData?.patterns) return [];
+    return insightsData.patterns.map(formatInsight);
+  }, [insightsData?.patterns]);
+
+  // Group insights by category
+  const groupedInsights = useMemo(() => {
+    return groupInsightsByCategory(formattedInsights);
+  }, [formattedInsights]);
+
+  // Get top priority insights (high priority first, then by category importance)
+  const priorityInsights = useMemo(() => {
+    const highPriority = formattedInsights.filter(i => i.priority === 'high');
+    const mediumPriority = formattedInsights.filter(i => i.priority === 'medium');
+    const lowPriority = formattedInsights.filter(i => i.priority === 'low');
+    
+    // Return top 5 most important insights
+    return [...highPriority, ...mediumPriority, ...lowPriority].slice(0, 5);
+  }, [formattedInsights]);
+
   // HealthKit checks
   if (Platform.OS !== 'ios') {
     // Show insights without health data on non-iOS devices
@@ -298,21 +332,76 @@ export default function InsightsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Insights</Text>
-        <Text style={styles.subtitle}>Your patterns, simplified</Text>
-        {lastSyncedAt && (
+        {wellnessScore && (
           <Text style={styles.subtitle}>
-            Health last synced: {format(lastSyncedAt, 'MMM d, h:mm a')}
+            {getWellnessGreeting(wellnessScore.overall)}
+          </Text>
+        )}
+        {!wellnessScore && (
+          <Text style={styles.subtitle}>Your health patterns, simplified</Text>
+        )}
+        {lastSyncedAt && (
+          <Text style={styles.lastSynced}>
+            Last updated {format(lastSyncedAt, 'MMM d, h:mm a')}
           </Text>
         )}
       </View>
 
-      {/* Health Analytics Section - Only show if on iOS and permissions granted */}
+      {/* Wellness Score Card - Always show first if available */}
+      {wellnessScore && (
+        <WellnessScoreCard score={wellnessScore} />
+      )}
+
+      {/* Key Insights - Prioritized and formatted - Show before detailed data */}
+      {priorityInsights.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>What I Noticed</Text>
+          <Text style={styles.sectionDescription}>
+            Here's what stands out from your health data this week
+          </Text>
+          
+          {priorityInsights.map((insight, index) => {
+            const pattern = insightsData?.patterns?.[index];
+            return (
+              <InsightCard
+                key={pattern?.id || index}
+                title={insight.title}
+                message={insight.message}
+                category={insight.category}
+                trend={insight.trend}
+                actionText={insight.actionText}
+                priority={insight.priority}
+                onActionPress={() => {
+                  // Handle action - could navigate to relevant screen
+                }}
+                onSave={() => pattern && handleSaveInsight(pattern.id)}
+              />
+            );
+          })}
+        </View>
+      )}
+
+      {/* Weekly Summary - Show after key insights */}
+      {insightsData?.weeklySummary && (
+        <View style={styles.section}>
+          <WeeklySummaryCard
+            summary={insightsData.weeklySummary.summary}
+            focusAreas={insightsData.weeklySummary.focusAreas}
+            trend={insightsData.weeklySummary.trend as 'improving' | 'declining' | 'stable'}
+            onPress={() => {}}
+          />
+        </View>
+      )}
+
+      {/* Health Analytics Section - Moved lower, less prominent */}
       {Platform.OS === 'ios' && healthAvailable && healthPermissionsGranted && (
         <>
           {/* Health Header */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Health Analytics</Text>
-            <Text style={styles.sectionSubtitle}>Your activity and sleep patterns</Text>
+            <Text style={styles.sectionTitle}>Your Data</Text>
+            <Text style={styles.sectionDescription}>
+              Detailed breakdown of your activity and sleep
+            </Text>
           </View>
 
           {/* Today's Health Stats */}
@@ -429,63 +518,6 @@ export default function InsightsScreen() {
         </Card>
       )}
 
-      {/* Weekly Summary - Real Data */}
-      {insightsData?.weeklySummary && (
-        <WeeklySummaryCard
-          summary={insightsData.weeklySummary.summary}
-          focusAreas={insightsData.weeklySummary.focusAreas}
-          trend={insightsData.weeklySummary.trend as 'improving' | 'declining' | 'stable'}
-          onPress={() => {}}
-        />
-      )}
-
-      {/* Pattern Cards - Real Data */}
-      {insightsData?.patterns && insightsData.patterns.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>This Week's Patterns</Text>
-            <TouchableOpacity>
-              <Ionicons name="options-outline" size={20} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {insightsData.patterns.map((pattern: Pattern) => (
-            <PatternCard
-              key={pattern.id}
-              title={pattern.title}
-              category={pattern.category as 'sleep' | 'mood' | 'productivity' | 'habits'}
-              interpretation={pattern.interpretation}
-              expandedContent={pattern.expandedContent}
-              trend={pattern.trend}
-              trendValue={pattern.trendValue}
-              dataPoints={pattern.dataPoints || []}
-              onSave={() => handleSaveInsight(pattern.id)}
-            />
-          ))}
-        </View>
-      )}
-
-      {/* Actionable Insight - Real Data */}
-      {insightsData?.actionable && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>What This Means for You</Text>
-          <Card style={styles.actionCard}>
-            <View style={styles.actionHeader}>
-              <View style={styles.actionIcon}>
-                <Ionicons name="bulb" size={20} color={Colors.warning} />
-              </View>
-              <Text style={styles.actionLabel}>RECOMMENDATION</Text>
-            </View>
-            <Text style={styles.actionBody}>{insightsData.actionable.body}</Text>
-            {insightsData.actionable.actionText && (
-              <TouchableOpacity style={styles.actionButton}>
-                <Text style={styles.actionButtonText}>{insightsData.actionable.actionText}</Text>
-                <Ionicons name="arrow-forward" size={16} color={Colors.textPrimary} />
-              </TouchableOpacity>
-            )}
-          </Card>
-        </View>
-      )}
 
       {/* Saved Insights Count - Real Data */}
       {(insightsData?.savedCount || 0) > 0 && (
@@ -499,11 +531,53 @@ export default function InsightsScreen() {
         </View>
       )}
 
+      {/* Additional Insights by Category - If there are more */}
+      {Object.keys(groupedInsights).length > 0 && priorityInsights.length < formattedInsights.length && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>More Insights</Text>
+          {Object.entries(groupedInsights).map(([category, categoryInsights]) => {
+            // Only show insights not already in priority list
+            const additionalInsights = categoryInsights.filter(
+              insight => !priorityInsights.some(pi => pi.title === insight.title)
+            );
+            
+            if (additionalInsights.length === 0) return null;
+            
+            return (
+              <View key={category} style={styles.categoryGroup}>
+                <Text style={styles.categoryTitle}>
+                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                </Text>
+                {additionalInsights.map((insight, idx) => {
+                  const pattern = insightsData?.patterns?.find(p => 
+                    formatInsight(p).title === insight.title
+                  );
+                  return (
+                    <InsightCard
+                      key={pattern?.id || `${category}-${idx}`}
+                      title={insight.title}
+                      message={insight.message}
+                      category={insight.category}
+                      trend={insight.trend}
+                      actionText={insight.actionText}
+                      priority={insight.priority}
+                      onSave={() => pattern && handleSaveInsight(pattern.id)}
+                    />
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
       {/* Tip */}
-      <View style={styles.tip}>
-        <Ionicons name="information-circle-outline" size={16} color={Colors.textTertiary} />
-        <Text style={styles.tipText}>Hold any card to save it to your favorites</Text>
-      </View>
+      {priorityInsights.length > 0 && (
+        <View style={styles.tip}>
+          <Ionicons name="information-circle-outline" size={16} color={Colors.textTertiary} />
+          <Text style={styles.tipText}>Tap any insight to save it</Text>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -531,6 +605,27 @@ const styles = StyleSheet.create({
   subtitle: {
     ...Typography.body,
     color: Colors.textSecondary,
+    marginTop: Spacing.xs,
+  },
+  lastSynced: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
+    marginTop: Spacing.xs,
+  },
+  sectionDescription: {
+    ...Typography.bodySmall,
+    color: Colors.textTertiary,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  categoryGroup: {
+    marginBottom: Spacing.lg,
+  },
+  categoryTitle: {
+    ...Typography.h3,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+    textTransform: 'capitalize',
   },
   section: {
     marginBottom: Spacing.xl,
@@ -684,11 +779,6 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   // Health section styles
-  sectionSubtitle: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
-  },
   statsGrid: {
     flexDirection: 'row',
     gap: Spacing.md,

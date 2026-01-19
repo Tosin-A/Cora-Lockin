@@ -23,3 +23,5 @@ export { default as EngagementPrompt } from "./EngagementPrompt";
 // Insights Screen components
 export { default as WeeklySummaryCard } from "./WeeklySummaryCard";
 export { default as PatternCard } from "./PatternCard";
+export { WellnessScoreCard } from "./WellnessScoreCard";
+export { InsightCard } from "./InsightCard";

@@ -64,7 +64,7 @@ This will open your browser to authenticate.
 #### Step 3: Initialize Railway Project
 
 ```bash
-cd /Users/ayanfex/Desktop/Personal\ Coding\ Projects/Ironamns/backend
+cd /Users/ayanfex/Desktop/Projects/Ironamns/backend
 railway init
 ```
 
@@ -263,7 +263,7 @@ Now that your backend is deployed, configure the mobile app to connect to it.
 Navigate to the coresense directory and create/update `.env` file:
 
 ```bash
-cd /Users/ayanfex/Desktop/Personal\ Coding\ Projects/Ironamns/coresense
+cd /Users/ayanfex/Desktop/Projects/Ironamns/coresense
 ```
 
 Create `.env` file with:

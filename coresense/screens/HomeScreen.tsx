@@ -57,23 +57,43 @@ export default function HomeScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
 
-  // Fetch real data from API (gracefully handles offline/no backend)
+  // Fetch real data from API with proper error handling
   const fetchData = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
     setError(null);
-    
+
     try {
-      const { data, error: apiError } = await coresenseApi.getHomeData();
-      
-      if (apiError) {
-        // Silently handle API errors - app works offline
-        console.log('API not available, working offline');
-      } else if (data) {
-        setHomeData(data);
+      const result = await coresenseApi.getHomeData();
+
+      if (result.error) {
+        // Log detailed error info for debugging
+        console.log('[HomeScreen] API error:', {
+          error: result.error,
+          category: (result as any).errorCategory,
+          isRetryable: (result as any).isRetryable,
+        });
+
+        // Only show error to user for non-network errors
+        // Network errors are common during development, don't alarm user
+        const errorCategory = (result as any).errorCategory;
+        if (errorCategory === 'network' || errorCategory === 'timeout') {
+          // Network unreachable - this is expected when backend isn't running
+          console.log('[HomeScreen] Backend unavailable, app will work with cached/local data');
+        } else if (errorCategory === 'auth') {
+          // Auth error - might need to re-login
+          console.log('[HomeScreen] Authentication error');
+          setError('Please sign in again');
+        } else {
+          // Server error - something went wrong on the backend
+          console.log('[HomeScreen] Server error');
+          // Don't set error state to avoid alarming user for transient issues
+        }
+      } else if (result.data) {
+        setHomeData(result.data);
       }
     } catch (err: any) {
-      // Silently handle network errors - app works offline
-      console.log('Network error, working offline');
+      // Unexpected error (shouldn't happen with proper error handling in apiRequest)
+      console.error('[HomeScreen] Unexpected error:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);

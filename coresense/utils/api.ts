@@ -3,8 +3,13 @@
  * API calls to Supabase backend
  */
 
-import { supabase } from './supabase';
-import type { UserProfile, UserPreferences, Task, CreateTaskInput } from '../types';
+import { supabase } from "./supabase";
+import type {
+  UserProfile,
+  UserPreferences,
+  Task,
+  CreateTaskInput,
+} from "../types";
 
 // ============================================================================
 // AUTHENTICATION FUNCTIONS
@@ -20,13 +25,15 @@ export const signInWithEmail = async (email: string, password: string) => {
     if (error) throw error;
 
     return {
-      user: data.user ? {
-        id: data.user.id,
-        email: data.user.email || '',
-        full_name: data.user.user_metadata?.full_name || null,
-        avatar_url: data.user.user_metadata?.avatar_url || null,
-        created_at: data.user.created_at,
-      } : null,
+      user: data.user
+        ? {
+            id: data.user.id,
+            email: data.user.email || "",
+            full_name: data.user.user_metadata?.full_name || null,
+            avatar_url: data.user.user_metadata?.avatar_url || null,
+            created_at: data.user.created_at,
+          }
+        : null,
       error: null,
     };
   } catch (error: any) {
@@ -34,7 +41,11 @@ export const signInWithEmail = async (email: string, password: string) => {
   }
 };
 
-export const signUpWithEmail = async (email: string, password: string, fullName?: string) => {
+export const signUpWithEmail = async (
+  email: string,
+  password: string,
+  fullName?: string
+) => {
   try {
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -49,13 +60,15 @@ export const signUpWithEmail = async (email: string, password: string, fullName?
     if (error) throw error;
 
     return {
-      user: data.user ? {
-        id: data.user.id,
-        email: data.user.email || '',
-        full_name: data.user.user_metadata?.full_name || null,
-        avatar_url: data.user.user_metadata?.avatar_url || null,
-        created_at: data.user.created_at,
-      } : null,
+      user: data.user
+        ? {
+            id: data.user.id,
+            email: data.user.email || "",
+            full_name: data.user.user_metadata?.full_name || null,
+            avatar_url: data.user.user_metadata?.avatar_url || null,
+            created_at: data.user.created_at,
+          }
+        : null,
       error: null,
     };
   } catch (error: any) {
@@ -76,7 +89,7 @@ export const signOut = async () => {
 export const signInWithGoogle = async () => {
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
+      provider: "google",
     });
 
     if (error) throw error;
@@ -94,7 +107,7 @@ export const signUpWithGoogle = async () => {
 export const signInWithApple = async () => {
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'apple',
+      provider: "apple",
     });
 
     if (error) throw error;
@@ -113,19 +126,21 @@ export const signUpWithApple = async () => {
 // USER PROFILE FUNCTIONS
 // ============================================================================
 
-export const getUserProfile = async (userId: string): Promise<{ data: UserProfile | null; error: any }> => {
-  console.log('[api.ts] 🔄 getUserProfile called for userId:', userId);
+export const getUserProfile = async (
+  userId: string
+): Promise<{ data: UserProfile | null; error: any }> => {
+  console.log("[api.ts] 🔄 getUserProfile called for userId:", userId);
   try {
     const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
+      .from("users")
+      .select("*")
+      .eq("id", userId)
       .single();
 
-    console.log('[api.ts] 📡 Supabase getProfile response:', { data, error });
+    console.log("[api.ts] 📡 Supabase getProfile response:", { data, error });
     return { data, error };
   } catch (error: any) {
-    console.log('[api.ts] 💥 Exception in getUserProfile:', error);
+    console.log("[api.ts] 💥 Exception in getUserProfile:", error);
     return { data: null, error };
   }
 };
@@ -134,19 +149,19 @@ export const updateUserProfile = async (
   userId: string,
   updates: Partial<UserProfile>
 ): Promise<{ data: UserProfile | null; error: any }> => {
-  console.log('[api.ts] 🔄 updateUserProfile called:', { userId, updates });
+  console.log("[api.ts] 🔄 updateUserProfile called:", { userId, updates });
   try {
     const { data, error } = await supabase
-      .from('users')
+      .from("users")
       .update(updates)
-      .eq('id', userId)
+      .eq("id", userId)
       .select()
       .single();
 
-    console.log('[api.ts] 📡 Supabase update response:', { data, error });
+    console.log("[api.ts] 📡 Supabase update response:", { data, error });
     return { data, error };
   } catch (error: any) {
-    console.log('[api.ts] 💥 Exception in updateUserProfile:', error);
+    console.log("[api.ts] 💥 Exception in updateUserProfile:", error);
     return { data: null, error };
   }
 };
@@ -155,15 +170,54 @@ export const updateUserProfile = async (
 // PREFERENCES FUNCTIONS
 // ============================================================================
 
-export const getUserPreferences = async (userId: string): Promise<{ data: UserPreferences | null; error: any }> => {
+export const getUserPreferences = async (
+  userId: string
+): Promise<{ data: UserPreferences | null; error: any }> => {
   try {
     const { data, error } = await supabase
-      .from('user_preferences')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
+      .from("user_preferences")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    return { data, error };
+    if (error) {
+      return { data: null, error };
+    }
+
+    // If no preferences exist, return default preferences
+    if (!data) {
+      const defaultPreferences: Omit<UserPreferences, "id"> = {
+        user_id: userId,
+        messaging_frequency: 3,
+        messaging_style: "balanced",
+        response_length: "medium",
+        quiet_hours_enabled: false,
+        quiet_hours_start: "22:00",
+        quiet_hours_end: "08:00",
+        quiet_hours_days: [1, 2, 3, 4, 5, 6, 7],
+        accountability_level: 5,
+        goals: [],
+        healthkit_enabled: false,
+        healthkit_sync_frequency: "daily",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      // Create default preferences for the user
+      const { data: newPreferences, error: createError } = await supabase
+        .from("user_preferences")
+        .insert(defaultPreferences)
+        .select()
+        .single();
+
+      if (createError) {
+        return { data: null, error: createError };
+      }
+
+      return { data: newPreferences, error: null };
+    }
+
+    return { data, error: null };
   } catch (error: any) {
     return { data: null, error };
   }
@@ -174,18 +228,37 @@ export const updatePreferences = async (
   preferences: Partial<UserPreferences>
 ): Promise<{ data: UserPreferences | null; error: any }> => {
   try {
-    const { data, error } = await supabase
-      .from('user_preferences')
-      .upsert({
-        user_id: userId,
-        ...preferences,
+    // Remove 'id' from preferences if present to let Supabase generate it
+    const { id, ...preferencesWithoutId } = preferences;
+
+    // First try to update existing record
+    const { data: updatedData, error: updateError } = await supabase
+      .from("user_preferences")
+      .update({
+        ...preferencesWithoutId,
         updated_at: new Date().toISOString(),
       })
-      .eq('user_id', userId)
+      .eq("user_id", userId)
       .select()
       .single();
 
-    return { data, error };
+    // If update failed (no existing record), try to insert
+    if (updateError || !updatedData) {
+      const { data: insertedData, error: insertError } = await supabase
+        .from("user_preferences")
+        .insert({
+          user_id: userId,
+          ...preferencesWithoutId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      return { data: insertedData, error: insertError };
+    }
+
+    return { data: updatedData, error: null };
   } catch (error: any) {
     return { data: null, error };
   }
@@ -198,24 +271,24 @@ export const updatePreferences = async (
 export const fetchTasks = async (
   userId: string,
   filters?: {
-    status?: 'pending' | 'completed' | 'skipped';
+    status?: "pending" | "completed" | "skipped";
     dueDate?: Date;
     limit?: number;
   }
 ): Promise<{ data: Task[] | null; error: any }> => {
   try {
     let query = supabase
-      .from('tasks')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .from("tasks")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
 
     if (filters?.status) {
-      query = query.eq('status', filters.status);
+      query = query.eq("status", filters.status);
     }
 
     if (filters?.dueDate) {
-      query = query.eq('due_date', filters.dueDate.toISOString().split('T')[0]);
+      query = query.eq("due_date", filters.dueDate.toISOString().split("T")[0]);
     }
 
     if (filters?.limit) {
@@ -236,7 +309,7 @@ export const createTask = async (
 ): Promise<{ data: Task | null; error: any }> => {
   try {
     const { data, error } = await supabase
-      .from('tasks')
+      .from("tasks")
       .insert({
         user_id: userId,
         ...task,
@@ -256,12 +329,12 @@ export const updateTask = async (
 ): Promise<{ data: Task | null; error: any }> => {
   try {
     const { data, error } = await supabase
-      .from('tasks')
+      .from("tasks")
       .update({
         ...updates,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', taskId)
+      .eq("id", taskId)
       .select()
       .single();
 
@@ -271,16 +344,18 @@ export const updateTask = async (
   }
 };
 
-export const completeTask = async (taskId: string): Promise<{ data: Task | null; error: any }> => {
+export const completeTask = async (
+  taskId: string
+): Promise<{ data: Task | null; error: any }> => {
   try {
     const { data, error } = await supabase
-      .from('tasks')
+      .from("tasks")
       .update({
-        status: 'completed',
+        status: "completed",
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', taskId)
+      .eq("id", taskId)
       .select()
       .single();
 
@@ -292,10 +367,7 @@ export const completeTask = async (taskId: string): Promise<{ data: Task | null;
 
 export const deleteTask = async (taskId: string): Promise<{ error: any }> => {
   try {
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', taskId);
+    const { error } = await supabase.from("tasks").delete().eq("id", taskId);
 
     return { error };
   } catch (error: any) {
@@ -310,7 +382,12 @@ export const deleteTask = async (taskId: string): Promise<{ error: any }> => {
 export interface HealthMetric {
   id?: string;
   user_id: string;
-  metric_type: 'steps' | 'sleep_duration' | 'active_energy' | 'heart_rate' | 'distance';
+  metric_type:
+    | "steps"
+    | "sleep_duration"
+    | "active_energy"
+    | "heart_rate"
+    | "distance";
   value: number;
   unit: string;
   recorded_at: string;
@@ -323,7 +400,7 @@ export interface HealthSyncStatus {
   last_synced_at?: string;
   last_steps_sync?: string;
   last_sleep_sync?: string;
-  sync_status?: 'idle' | 'syncing' | 'error';
+  sync_status?: "idle" | "syncing" | "error";
   error_message?: string;
 }
 
@@ -331,20 +408,20 @@ export interface HealthSyncStatus {
  * Sync health metrics to Supabase
  */
 export const syncHealthMetrics = async (
-  metrics: Array<Omit<HealthMetric, 'id' | 'user_id'>>,
+  metrics: Array<Omit<HealthMetric, "id" | "user_id">>,
   userId: string
 ): Promise<{ data: HealthMetric[] | null; error: any }> => {
   try {
     const metricsWithUserId = metrics.map((metric) => ({
       ...metric,
       user_id: userId,
-      source: metric.source || 'healthkit',
+      source: metric.source || "healthkit",
     }));
 
     const { data, error } = await supabase
-      .from('health_metrics')
+      .from("health_metrics")
       .upsert(metricsWithUserId, {
-        onConflict: 'user_id,metric_type,recorded_at',
+        onConflict: "user_id,metric_type,recorded_at",
       })
       .select();
 
@@ -359,19 +436,19 @@ export const syncHealthMetrics = async (
  */
 export const getHealthMetrics = async (
   userId: string,
-  metricType: HealthMetric['metric_type'],
+  metricType: HealthMetric["metric_type"],
   startDate: Date,
   endDate: Date
 ): Promise<{ data: HealthMetric[] | null; error: any }> => {
   try {
     const { data, error } = await supabase
-      .from('health_metrics')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('metric_type', metricType)
-      .gte('recorded_at', startDate.toISOString())
-      .lte('recorded_at', endDate.toISOString())
-      .order('recorded_at', { ascending: true });
+      .from("health_metrics")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("metric_type", metricType)
+      .gte("recorded_at", startDate.toISOString())
+      .lte("recorded_at", endDate.toISOString())
+      .order("recorded_at", { ascending: true });
 
     return { data, error };
   } catch (error) {
@@ -387,7 +464,7 @@ export const getDailySteps = async (
   startDate: Date,
   endDate: Date
 ): Promise<{ data: HealthMetric[] | null; error: any }> => {
-  return getHealthMetrics(userId, 'steps', startDate, endDate);
+  return getHealthMetrics(userId, "steps", startDate, endDate);
 };
 
 /**
@@ -398,7 +475,7 @@ export const getDailySleep = async (
   startDate: Date,
   endDate: Date
 ): Promise<{ data: HealthMetric[] | null; error: any }> => {
-  return getHealthMetrics(userId, 'sleep_duration', startDate, endDate);
+  return getHealthMetrics(userId, "sleep_duration", startDate, endDate);
 };
 
 /**
@@ -410,7 +487,7 @@ export const updateHealthSyncStatus = async (
 ): Promise<{ data: HealthSyncStatus | null; error: any }> => {
   try {
     const { data, error } = await supabase
-      .from('health_sync_status')
+      .from("health_sync_status")
       .upsert(
         {
           user_id: userId,
@@ -418,7 +495,7 @@ export const updateHealthSyncStatus = async (
           updated_at: new Date().toISOString(),
         },
         {
-          onConflict: 'user_id',
+          onConflict: "user_id",
         }
       )
       .select()
@@ -438,9 +515,9 @@ export const getHealthSyncStatus = async (
 ): Promise<{ data: HealthSyncStatus | null; error: any }> => {
   try {
     const { data, error } = await supabase
-      .from('health_sync_status')
-      .select('*')
-      .eq('user_id', userId)
+      .from("health_sync_status")
+      .select("*")
+      .eq("user_id", userId)
       .single();
 
     return { data, error };
@@ -456,27 +533,33 @@ export const getHealthSyncStatus = async (
 export interface ChatMessage {
   id: string;
   content: string;
-  sender: 'user' | 'coach';
+  sender: "user" | "coach";
   timestamp: string;
   user_id?: string;
 }
 
-export const sendChatMessage = async (message: string): Promise<{ data: { response: string } | null; error: any }> => {
+export const sendChatMessage = async (
+  message: string
+): Promise<{ data: { response: string } | null; error: any }> => {
   try {
     // This would typically call your backend API
     // For now, return a mock response
     return {
       data: {
-        response: "Thanks for your message! I'm here to help you with your wellness journey. What would you like to focus on today?"
+        response:
+          "Thanks for your message! I'm here to help you with your wellness journey. What would you like to focus on today?",
       },
-      error: null
+      error: null,
     };
   } catch (error: any) {
     return { data: null, error };
   }
 };
 
-export const getChatHistory = async (): Promise<{ data: ChatMessage[] | null; error: any }> => {
+export const getChatHistory = async (): Promise<{
+  data: ChatMessage[] | null;
+  error: any;
+}> => {
   try {
     // This would typically fetch from a chat_messages table
     // For now, return empty array (no chat history yet)
@@ -491,10 +574,13 @@ export const getChatHistory = async (): Promise<{ data: ChatMessage[] | null; er
 // ============================================================================
 
 // Compatibility functions for coresenseApi interface
-export const getProfile = async (): Promise<{ data: UserProfile | null; error: any }> => {
+export const getProfile = async (): Promise<{
+  data: UserProfile | null;
+  error: any;
+}> => {
   try {
     const { data: user } = await supabase.auth.getUser();
-    if (!user.user) return { data: null, error: 'No authenticated user' };
+    if (!user.user) return { data: null, error: "No authenticated user" };
 
     return getUserProfile(user.user.id);
   } catch (error: any) {
@@ -502,10 +588,12 @@ export const getProfile = async (): Promise<{ data: UserProfile | null; error: a
   }
 };
 
-export const updateProfile = async (updates: Partial<UserProfile>): Promise<{ success: boolean; error: any }> => {
+export const updateProfile = async (
+  updates: Partial<UserProfile>
+): Promise<{ success: boolean; error: any }> => {
   try {
     const { data: user } = await supabase.auth.getUser();
-    if (!user.user) return { success: false, error: 'No authenticated user' };
+    if (!user.user) return { success: false, error: "No authenticated user" };
 
     const { error } = await updateUserProfile(user.user.id, updates);
     return { success: !error, error };
@@ -514,10 +602,13 @@ export const updateProfile = async (updates: Partial<UserProfile>): Promise<{ su
   }
 };
 
-export const getPreferences = async (): Promise<{ data: UserPreferences | null; error: any }> => {
+export const getPreferences = async (): Promise<{
+  data: UserPreferences | null;
+  error: any;
+}> => {
   try {
     const { data: user } = await supabase.auth.getUser();
-    if (!user.user) return { data: null, error: 'No authenticated user' };
+    if (!user.user) return { data: null, error: "No authenticated user" };
 
     return getUserPreferences(user.user.id);
   } catch (error: any) {
@@ -525,10 +616,12 @@ export const getPreferences = async (): Promise<{ data: UserPreferences | null; 
   }
 };
 
-export const updatePreferencesApi = async (updates: Partial<UserPreferences>): Promise<{ success: boolean; error: any }> => {
+export const updatePreferencesApi = async (
+  updates: Partial<UserPreferences>
+): Promise<{ success: boolean; error: any }> => {
   try {
     const { data: user } = await supabase.auth.getUser();
-    if (!user.user) return { success: false, error: 'No authenticated user' };
+    if (!user.user) return { success: false, error: "No authenticated user" };
 
     const { error } = await updatePreferences(user.user.id, updates);
     return { success: !error, error };
