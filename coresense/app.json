@@ -14,9 +14,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.coresense.app",
+      "newArchEnabled": false,
       "infoPlist": {
         "NSHealthShareUsageDescription": "CoreSense needs access to your health data to provide personalized coaching insights.",
         "NSHealthUpdateUsageDescription": "CoreSense needs access to update your health data for tracking purposes."
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
       }
     },
     "android": {
@@ -33,7 +38,15 @@
       [
         "expo-apple-authentication",
         {
-          "appleTeamId": "3RVGPKK5M8"
+          "appleTeamId": "6C383NJ99X"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "newArchEnabled": false
+          }
         }
       ]
     ],

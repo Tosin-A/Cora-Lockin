@@ -40,6 +40,11 @@ interface HealthState {
   // Weekly data
   weeklySteps: Array<{ date: Date; steps: number }>;
   weeklySleep: Array<{ date: Date; hours: number }>;
+  weeklyHeartRate: Array<{ date: Date; bpm: number }>;
+  weeklyActiveEnergy: Array<{ date: Date; calories: number }>;
+
+  // Loading states
+  isLoadingWeeklyData: boolean;
 
   // Sync status
   syncStatus: HealthSyncStatus | null;
@@ -63,6 +68,9 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   todayData: null,
   weeklySteps: [],
   weeklySleep: [],
+  weeklyHeartRate: [],
+  weeklyActiveEnergy: [],
+  isLoadingWeeklyData: false,
   syncStatus: null,
   isSyncing: false,
   lastSyncedAt: null,
@@ -71,9 +79,16 @@ export const useHealthStore = create<HealthState>((set, get) => ({
    * Initialize HealthKit and check permissions
    */
   initialize: async () => {
+    // Prevent multiple simultaneous initializations
+    if (get().isInitializing) {
+      console.log('[HealthStore] Already initializing, skipping...');
+      return;
+    }
+    console.log('[HealthStore] Starting initialization...');
     set({ isInitializing: true });
     try {
       const status = await initializeHealthKit();
+      console.log('[HealthStore] HealthKit status:', status);
       set({
         isAvailable: status.isAvailable,
         permissionsGranted: status.permissionsGranted,
@@ -81,11 +96,17 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       });
 
       if (status.isAvailable && status.permissionsGranted) {
-        // Fetch today's data immediately
-        await get().refreshTodayData();
+        console.log('[HealthStore] Permissions granted, fetching data...');
+        // Fetch today's and weekly data immediately
+        await Promise.all([
+          get().refreshTodayData(),
+          get().refreshWeeklyData(),
+        ]);
+      } else {
+        console.log('[HealthStore] HealthKit not available or permissions not granted');
       }
     } catch (error) {
-      console.error('HealthKit initialization error:', error);
+      console.error('[HealthStore] HealthKit initialization error:', error);
       set({ isInitializing: false });
     }
   },
@@ -109,15 +130,17 @@ export const useHealthStore = create<HealthState>((set, get) => ({
    */
   refreshTodayData: async () => {
     if (!get().permissionsGranted) {
-      console.warn('HealthKit permissions not granted');
+      console.warn('[HealthStore] HealthKit permissions not granted for today data');
       return;
     }
 
     try {
+      console.log('[HealthStore] Fetching today health data...');
       const todayData = await getTodayHealthData();
+      console.log('[HealthStore] Today data received:', todayData);
       set({ todayData });
     } catch (error) {
-      console.error('Error fetching today health data:', error);
+      console.error('[HealthStore] Error fetching today health data:', error);
     }
   },
 
@@ -126,18 +149,31 @@ export const useHealthStore = create<HealthState>((set, get) => ({
    */
   refreshWeeklyData: async () => {
     if (!get().permissionsGranted) {
-      console.warn('HealthKit permissions not granted');
+      console.warn('[HealthStore] HealthKit permissions not granted for weekly data');
       return;
     }
 
+    set({ isLoadingWeeklyData: true });
+
     try {
+      console.log('[HealthStore] Fetching weekly health data...');
       const weeklyData = await getWeeklyHealthData();
+      console.log('[HealthStore] Weekly data received:', {
+        steps: weeklyData.steps.length,
+        sleep: weeklyData.sleep.length,
+        heartRate: weeklyData.heartRate.length,
+        activeEnergy: weeklyData.activeEnergy.length,
+      });
       set({
         weeklySteps: weeklyData.steps,
         weeklySleep: weeklyData.sleep,
+        weeklyHeartRate: weeklyData.heartRate,
+        weeklyActiveEnergy: weeklyData.activeEnergy,
+        isLoadingWeeklyData: false,
       });
     } catch (error) {
-      console.error('Error fetching weekly health data:', error);
+      console.error('[HealthStore] Error fetching weekly health data:', error);
+      set({ isLoadingWeeklyData: false });
     }
   },
 
@@ -314,6 +350,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
             steps: todaySteps?.value || 0,
             activeEnergy: 0, // Not loaded from Supabase for now
             sleepHours: lastNightSleep?.value || 0,
+            heartRate: null, // Not loaded from Supabase for now
             date: new Date(),
           },
         });

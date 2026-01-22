@@ -1,4 +1,4 @@
-package com.coresense
+package com.coresense.app
 
 import android.os.Build
 import android.os.Bundle

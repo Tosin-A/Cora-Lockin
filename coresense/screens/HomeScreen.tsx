@@ -45,7 +45,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
   const { profile, fetchProfile } = useUserStore();
-  const { todayData, initialize: initializeHealth, permissionsGranted } = useHealthStore();
+  const { initialize: initializeHealth } = useHealthStore();
   
   // Real data state
   const [homeData, setHomeData] = useState<HomeData | null>(null);
@@ -174,10 +174,6 @@ export default function HomeScreen() {
     );
   }
 
-  // Get current sleep hours from HealthKit or API
-  const currentSleepHours = todayData?.sleepHours ?? homeData?.sleepHours ?? null;
-  const currentSteps = todayData?.steps ?? 0;
-
   return (
     <ScrollView
       style={styles.container}
@@ -222,30 +218,6 @@ export default function HomeScreen() {
           </View>
         </View>
       </Animated.View>
-
-
-
-
-
-      {/* Health Stats Row - Show HealthKit data */}
-      {permissionsGranted && (currentSteps > 0 || currentSleepHours) && (
-        <View style={styles.healthStatsRow}>
-          {currentSteps > 0 && (
-            <View style={styles.healthStat}>
-              <Ionicons name="footsteps" size={18} color={Colors.primary} />
-              <Text style={styles.healthStatValue}>{currentSteps.toLocaleString()}</Text>
-              <Text style={styles.healthStatLabel}>steps</Text>
-            </View>
-          )}
-          {currentSleepHours !== null && currentSleepHours > 0 && (
-            <View style={styles.healthStat}>
-              <Ionicons name="moon" size={18} color={Colors.accent} />
-              <Text style={styles.healthStatValue}>{currentSleepHours.toFixed(1)}h</Text>
-              <Text style={styles.healthStatLabel}>sleep</Text>
-            </View>
-          )}
-        </View>
-      )}
 
       {/* Open Messages Button - Primary CTA - NOW AT TOP */}
       <TouchableOpacity
@@ -389,31 +361,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 12,
     marginTop: 2,
-  },
-  // Health stats row
-  healthStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.xl,
-    marginBottom: Spacing.lg,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.medium,
-  },
-  healthStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  healthStatValue: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
-    fontWeight: '600',
-  },
-  healthStatLabel: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
   },
   section: {
     marginBottom: Spacing.xl,

@@ -12,38 +12,65 @@ let HealthValue: any = null;
 let HealthInputOptions: any = null;
 let HealthUnit: any = null;
 
+console.log('[HealthService] Module loading, Platform:', Platform.OS);
+
 try {
-  // Only import if we're not in Expo Go (Expo Go doesn't support native modules)
-  if (Platform.OS === 'ios' && !__DEV__) {
-    const healthKit = require('react-native-health');
-    AppleHealthKit = healthKit.default || healthKit;
-    HealthKitPermissions = healthKit.HealthKitPermissions;
-    HealthValue = healthKit.HealthValue;
-    HealthInputOptions = healthKit.HealthInputOptions;
-    HealthUnit = healthKit.HealthUnit;
+  // Try to import on iOS - works in development builds and production, fails in Expo Go
+  if (Platform.OS === 'ios') {
+    console.log('[HealthService] Attempting to require react-native-health...');
+    const healthKitModule = require('react-native-health');
+    console.log('[HealthService] healthKit module keys:', Object.keys(healthKitModule || {}));
+
+    // Handle both default export and direct export patterns
+    const healthKit = healthKitModule.default || healthKitModule;
+    console.log('[HealthService] healthKit resolved keys:', Object.keys(healthKit || {}));
+
+    AppleHealthKit = healthKit;
+
+    console.log('[HealthService] AppleHealthKit:', AppleHealthKit ? 'loaded' : 'null');
+    console.log('[HealthService] Has Constants:', !!AppleHealthKit?.Constants);
+    console.log('[HealthService] Has initHealthKit:', typeof AppleHealthKit?.initHealthKit);
+    console.log('[HealthService] Has isAvailable:', typeof AppleHealthKit?.isAvailable);
+
+    // Check for the native module - it should have initHealthKit function
+    if (typeof AppleHealthKit?.initHealthKit === 'function') {
+      HealthUnit = AppleHealthKit.Constants?.Units;
+      console.log('[HealthService] HealthKit module loaded successfully');
+    } else {
+      console.warn('[HealthService] AppleHealthKit native module not properly linked');
+      console.warn('[HealthService] Available properties:', JSON.stringify(Object.keys(healthKit || {})));
+      AppleHealthKit = null;
+    }
   }
-} catch (error) {
-  console.warn('react-native-health not available - this is expected in Expo Go');
+} catch (error: any) {
+  console.warn('[HealthService] react-native-health not available:', error?.message || error);
   // Module not available, keep variables as null
 }
 
-/* Permission options - only define if AppleHealthKit is available */
-const permissions = AppleHealthKit ? {
-  permissions: {
-    read: [
-      AppleHealthKit.Constants.Permissions.Steps,
-      AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
-      AppleHealthKit.Constants.Permissions.SleepAnalysis,
-      AppleHealthKit.Constants.Permissions.HeartRate,
-    ],
-    write: [], // We don't write data, only read
-  },
-} : null;
+/* Permission options - define lazily when needed */
+const getPermissions = () => {
+  if (!AppleHealthKit?.Constants?.Permissions) {
+    console.warn('[HealthService] Cannot get permissions - Constants not available');
+    return null;
+  }
+  return {
+    permissions: {
+      read: [
+        AppleHealthKit.Constants.Permissions.Steps,
+        AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
+        AppleHealthKit.Constants.Permissions.SleepAnalysis,
+        AppleHealthKit.Constants.Permissions.HeartRate,
+      ],
+      write: [], // We don't write data, only read
+    },
+  };
+};
 
 export interface HealthData {
   steps: number;
   activeEnergy: number;
   sleepHours: number;
+  heartRate: number | null;
   date: Date;
 }
 
@@ -57,7 +84,7 @@ export interface HealthKitStatus {
  */
 export const requestHealthKitPermissions = (): Promise<HealthKitStatus> => {
   return new Promise((resolve, reject) => {
-    if (Platform.OS !== 'ios') {
+    if (Platform.OS !== 'ios' || !AppleHealthKit) {
       resolve({
         isAvailable: false,
         permissionsGranted: false,
@@ -65,7 +92,7 @@ export const requestHealthKitPermissions = (): Promise<HealthKitStatus> => {
       return;
     }
 
-    AppleHealthKit?.isAvailable((error: Object, available: boolean) => {
+    AppleHealthKit.isAvailable((error: Object, available: boolean) => {
       if (error) {
         console.error('HealthKit availability check failed:', error);
         resolve({
@@ -85,9 +112,13 @@ export const requestHealthKitPermissions = (): Promise<HealthKitStatus> => {
       }
 
       // Request permissions again
-      AppleHealthKit?.initHealthKit(permissions, (error: Object) => {
+      const perms = getPermissions();
+      console.log('[HealthService] Requesting permissions with:', JSON.stringify(perms));
+
+      AppleHealthKit.initHealthKit(perms, (error: Object) => {
         if (error) {
-          console.error('HealthKit permission request error:', error);
+          const errorMsg = typeof error === 'object' ? JSON.stringify(error) : String(error);
+          console.error('HealthKit permission request error:', errorMsg);
           resolve({
             isAvailable: true,
             permissionsGranted: false,
@@ -95,8 +126,11 @@ export const requestHealthKitPermissions = (): Promise<HealthKitStatus> => {
           return;
         }
 
+        console.log('[HealthService] initHealthKit succeeded, checking permissions...');
+
         // Check if permissions were granted
         checkPermissions().then((granted) => {
+          console.log('[HealthService] checkPermissions result:', granted);
           resolve({
             isAvailable: true,
             permissionsGranted: granted,
@@ -112,7 +146,12 @@ export const requestHealthKitPermissions = (): Promise<HealthKitStatus> => {
  */
 export const initializeHealthKit = (): Promise<HealthKitStatus> => {
   return new Promise((resolve, reject) => {
+    console.log('[HealthService] initializeHealthKit called');
+    console.log('[HealthService] Platform:', Platform.OS);
+    console.log('[HealthService] AppleHealthKit available:', !!AppleHealthKit);
+
     if (Platform.OS !== 'ios') {
+      console.log('[HealthService] Not iOS, returning unavailable');
       resolve({
         isAvailable: false,
         permissionsGranted: false,
@@ -120,9 +159,19 @@ export const initializeHealthKit = (): Promise<HealthKitStatus> => {
       return;
     }
 
-    AppleHealthKit?.isAvailable((error: Object, available: boolean) => {
+    if (!AppleHealthKit) {
+      console.log('[HealthService] AppleHealthKit module not loaded');
+      resolve({
+        isAvailable: false,
+        permissionsGranted: false,
+      });
+      return;
+    }
+
+    AppleHealthKit.isAvailable((error: Object, available: boolean) => {
+      console.log('[HealthService] isAvailable callback:', { error, available });
       if (error) {
-        console.error('HealthKit availability check failed:', error);
+        console.error('[HealthService] HealthKit availability check failed:', error);
         resolve({
           isAvailable: false,
           permissionsGranted: false,
@@ -131,7 +180,7 @@ export const initializeHealthKit = (): Promise<HealthKitStatus> => {
       }
 
       if (!available) {
-        console.warn('HealthKit is not available on this device');
+        console.warn('[HealthService] HealthKit is not available on this device');
         resolve({
           isAvailable: false,
           permissionsGranted: false,
@@ -139,10 +188,14 @@ export const initializeHealthKit = (): Promise<HealthKitStatus> => {
         return;
       }
 
+      console.log('[HealthService] Requesting permissions...');
+      const perms = getPermissions();
+      console.log('[HealthService] Permission options:', JSON.stringify(perms));
+
       // Request permissions
-      AppleHealthKit?.initHealthKit(permissions, (error: Object) => {
+      AppleHealthKit.initHealthKit(perms, (error: Object) => {
         if (error) {
-          console.error('HealthKit initialization error:', error);
+          console.error('[HealthService] HealthKit initialization error:', error);
           resolve({
             isAvailable: true,
             permissionsGranted: false,
@@ -150,11 +203,21 @@ export const initializeHealthKit = (): Promise<HealthKitStatus> => {
           return;
         }
 
-        // Check if permissions were granted
+        console.log('[HealthService] initHealthKit succeeded!');
+        // If initHealthKit succeeded, permissions were granted (or already existed)
+        // We'll verify by attempting to read data
         checkPermissions().then((granted) => {
+          console.log('[HealthService] Permissions check result:', granted);
           resolve({
             isAvailable: true,
             permissionsGranted: granted,
+          });
+        }).catch((err) => {
+          console.error('[HealthService] Permissions check error:', err);
+          // Assume granted if check fails but init succeeded
+          resolve({
+            isAvailable: true,
+            permissionsGranted: true,
           });
         });
       });
@@ -163,32 +226,54 @@ export const initializeHealthKit = (): Promise<HealthKitStatus> => {
 };
 
 /**
- * Check if HealthKit permissions are granted
+ * Check if HealthKit permissions are granted by attempting to read step count
+ * react-native-health doesn't have a direct permission check, so we verify by reading data
  */
 export const checkPermissions = (): Promise<boolean> => {
   return new Promise((resolve) => {
-    if (Platform.OS !== 'ios' || !AppleHealthKit || !permissions) {
+    console.log('[HealthService] checkPermissions called');
+
+    if (Platform.OS !== 'ios' || !AppleHealthKit) {
+      console.log('[HealthService] checkPermissions: not iOS or no AppleHealthKit');
       resolve(false);
       return;
     }
 
-    AppleHealthKit?.getAuthStatus(
-      permissions?.permissions?.read || [],
-      (error: Object, results: Object) => {
-        if (error) {
-          console.error('Permission check error:', error);
-          resolve(false);
-          return;
-        }
+    // Try to read step count - if it works, we have permissions
+    const today = new Date();
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
 
-        // Check if any permission is granted
-        const statuses = Object.values(results as Record<string, number>);
-        const hasPermission = statuses.some(
-          (status) => status === AppleHealthKit?.Constants?.Permissions?.Authorized
-        );
-        resolve(hasPermission);
+    const options = {
+      date: today.toISOString(),
+      startDate: startOfDay.toISOString(),
+      endDate: today.toISOString(),
+    };
+
+    console.log('[HealthService] checkPermissions: calling getStepCount with:', options);
+
+    AppleHealthKit.getStepCount(options, (error: Object, results: any) => {
+      console.log('[HealthService] getStepCount callback:', { error, results });
+
+      if (error) {
+        const errorStr = JSON.stringify(error);
+        console.log('[HealthService] getStepCount error string:', errorStr);
+
+        // Check if it's an authorization error specifically
+        if (errorStr.includes('authorization') || errorStr.includes('denied') || errorStr.includes('Authorization')) {
+          console.log('[HealthService] Authorization error detected');
+          resolve(false);
+        } else {
+          // Other errors (like no data) mean we have permission
+          console.log('[HealthService] Non-auth error, assuming permission granted');
+          resolve(true);
+        }
+        return;
       }
-    );
+
+      console.log('[HealthService] Permission check succeeded, steps:', results?.value);
+      resolve(true);
+    });
   });
 };
 
@@ -406,22 +491,178 @@ export const getActiveEnergyForDate = (date: Date): Promise<number> => {
 };
 
 /**
+ * Get heart rate for a specific date (average of all samples)
+ */
+export const getHeartRateForDate = (date: Date): Promise<number | null> => {
+  return new Promise((resolve, reject) => {
+    if (Platform.OS !== 'ios' || !AppleHealthKit) {
+      resolve(null);
+      return;
+    }
+
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const options: any = {
+      unit: 'bpm',
+      startDate: startOfDay.toISOString(),
+      endDate: endOfDay.toISOString(),
+      ascending: false,
+    };
+
+    AppleHealthKit?.getHeartRateSamples(options, (error: Object, results: any[]) => {
+      if (error) {
+        console.error('Error fetching heart rate:', error);
+        resolve(null);
+        return;
+      }
+
+      if (!results || results.length === 0) {
+        resolve(null);
+        return;
+      }
+
+      // Calculate average heart rate for the day
+      const sum = results.reduce((acc, sample) => acc + (sample.value || 0), 0);
+      const average = Math.round(sum / results.length);
+      resolve(average);
+    });
+  });
+};
+
+/**
+ * Get daily heart rate for a date range
+ */
+export const getDailyHeartRate = (
+  startDate: Date,
+  endDate: Date
+): Promise<Array<{ date: Date; bpm: number }>> => {
+  return new Promise((resolve, reject) => {
+    if (Platform.OS !== 'ios' || !AppleHealthKit) {
+      resolve([]);
+      return;
+    }
+
+    const options: any = {
+      unit: 'bpm',
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      ascending: true,
+    };
+
+    AppleHealthKit?.getHeartRateSamples(options, (error: Object, results: any[]) => {
+      if (error) {
+        console.error('Error fetching daily heart rate:', error);
+        resolve([]);
+        return;
+      }
+
+      if (!results || results.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      // Group by date and calculate daily averages
+      const heartRateByDate: Record<string, { sum: number; count: number }> = {};
+
+      results.forEach((sample) => {
+        const sampleDate = new Date(sample.startDate || sample.endDate);
+        const dateKey = sampleDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+        if (!heartRateByDate[dateKey]) {
+          heartRateByDate[dateKey] = { sum: 0, count: 0 };
+        }
+        heartRateByDate[dateKey].sum += sample.value || 0;
+        heartRateByDate[dateKey].count += 1;
+      });
+
+      const dailyHeartRate = Object.entries(heartRateByDate).map(([dateKey, data]) => ({
+        date: new Date(dateKey),
+        bpm: Math.round(data.sum / data.count),
+      }));
+
+      resolve(dailyHeartRate);
+    });
+  });
+};
+
+/**
+ * Get daily active energy for a date range
+ */
+export const getDailyActiveEnergy = (
+  startDate: Date,
+  endDate: Date
+): Promise<Array<{ date: Date; calories: number }>> => {
+  return new Promise((resolve, reject) => {
+    if (Platform.OS !== 'ios' || !AppleHealthKit) {
+      resolve([]);
+      return;
+    }
+
+    const options: any = {
+      unit: HealthUnit?.kilocalorie || 'kilocalorie',
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      ascending: true,
+    };
+
+    AppleHealthKit?.getActiveEnergyBurned(options, (error: Object, results: any[]) => {
+      if (error) {
+        console.error('Error fetching daily active energy:', error);
+        resolve([]);
+        return;
+      }
+
+      if (!results || results.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      // Group by date and sum calories
+      const energyByDate: Record<string, number> = {};
+
+      results.forEach((sample) => {
+        const sampleDate = new Date(sample.startDate || sample.endDate);
+        const dateKey = sampleDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+        if (!energyByDate[dateKey]) {
+          energyByDate[dateKey] = 0;
+        }
+        energyByDate[dateKey] += sample.value || 0;
+      });
+
+      const dailyEnergy = Object.entries(energyByDate).map(([dateKey, calories]) => ({
+        date: new Date(dateKey),
+        calories: Math.round(calories),
+      }));
+
+      resolve(dailyEnergy);
+    });
+  });
+};
+
+/**
  * Get today's health summary
  */
 export const getTodayHealthData = async (): Promise<HealthData> => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [steps, activeEnergy, sleepHours] = await Promise.all([
+  const [steps, activeEnergy, sleepHours, heartRate] = await Promise.all([
     getStepsForDate(today),
     getActiveEnergyForDate(today),
     getSleepForDate(today), // Last night's sleep
+    getHeartRateForDate(today),
   ]);
 
   return {
     steps,
     activeEnergy,
     sleepHours,
+    heartRate,
     date: today,
   };
 };
@@ -432,17 +673,21 @@ export const getTodayHealthData = async (): Promise<HealthData> => {
 export const getWeeklyHealthData = async (): Promise<{
   steps: Array<{ date: Date; steps: number }>;
   sleep: Array<{ date: Date; hours: number }>;
+  heartRate: Array<{ date: Date; bpm: number }>;
+  activeEnergy: Array<{ date: Date; calories: number }>;
 }> => {
   const endDate = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - 7);
 
-  const [steps, sleep] = await Promise.all([
+  const [steps, sleep, heartRate, activeEnergy] = await Promise.all([
     getDailySteps(startDate, endDate),
     getDailySleep(startDate, endDate),
+    getDailyHeartRate(startDate, endDate),
+    getDailyActiveEnergy(startDate, endDate),
   ]);
 
-  return { steps, sleep };
+  return { steps, sleep, heartRate, activeEnergy };
 };
 
 

@@ -22,7 +22,7 @@ import { handleOAuthError } from '../utils/oauth';
 
 export default function AuthScreen() {
   const navigation = useNavigation();
-  const { signIn, signUp, signInWithGoogle, isLoading, googleLoading } = useAuthStore();
+  const { signIn, signUp, signInWithGoogle, signInWithApple, isLoading, googleLoading, appleLoading } = useAuthStore();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,6 +31,7 @@ export default function AuthScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [generalError, setGeneralError] = useState('');
   const [googleError, setGoogleError] = useState('');
+  const [appleError, setAppleError] = useState('');
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -118,19 +119,41 @@ export default function AuthScreen() {
   const handleGoogleSignIn = async () => {
     setGoogleError('');
     setGeneralError('');
-    
+
     try {
       console.log('AuthScreen: Starting Google sign-in...');
       await signInWithGoogle();
       console.log('AuthScreen: Google sign-in successful');
     } catch (err: any) {
       console.error('AuthScreen: Google sign-in error:', err);
-      
+
       const errorMessage = handleOAuthError(err);
       setGoogleError(errorMessage);
-      
+
       Alert.alert(
         'Google Sign-In Failed',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setAppleError('');
+    setGeneralError('');
+
+    try {
+      console.log('AuthScreen: Starting Apple sign-in...');
+      await signInWithApple();
+      console.log('AuthScreen: Apple sign-in successful');
+    } catch (err: any) {
+      console.error('AuthScreen: Apple sign-in error:', err);
+
+      const errorMessage = handleOAuthError(err);
+      setAppleError(errorMessage);
+
+      Alert.alert(
+        'Apple Sign-In Failed',
         errorMessage,
         [{ text: 'OK' }]
       );
@@ -198,9 +221,22 @@ export default function AuthScreen() {
             loading={googleLoading}
             style={styles.googleButton}
           />
-          
+
           {googleError && (
             <Text style={styles.googleError}>{googleError}</Text>
+          )}
+
+          {/* Continue with Apple Button */}
+          <PurpleButton
+            title="Continue with Apple"
+            onPress={handleAppleSignIn}
+            variant="secondary"
+            loading={appleLoading}
+            style={styles.appleButton}
+          />
+
+          {appleError && (
+            <Text style={styles.appleError}>{appleError}</Text>
           )}
 
           {generalError && (
@@ -306,6 +342,15 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
   googleError: {
+    ...Typography.caption,
+    color: Colors.error,
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+  },
+  appleButton: {
+    marginTop: Spacing.sm,
+  },
+  appleError: {
     ...Typography.caption,
     color: Colors.error,
     marginTop: Spacing.xs,

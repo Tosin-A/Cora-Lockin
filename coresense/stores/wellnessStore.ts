@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import { coresenseApi } from "../utils/coresenseApi";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 export interface WellnessScore {
   overall: number;
@@ -43,11 +44,9 @@ export const useWellnessStore = create<WellnessState>((set, get) => ({
         throw new Error("Not authenticated");
       }
 
-      const API_URL =
-        process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.116:8000";
       const url = date
-        ? `${API_URL}/api/v1/wellness/score?target_date=${date}`
-        : `${API_URL}/api/v1/wellness/score`;
+        ? `${API_BASE_URL}/api/v1/wellness/score?target_date=${date}`
+        : `${API_BASE_URL}/api/v1/wellness/score`;
 
       const response = await fetch(url, {
         headers: {

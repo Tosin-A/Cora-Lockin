@@ -27,6 +27,10 @@ export const startGoogleOAuth = async () => {
       options: {
         redirectTo: redirectUri,
         skipBrowserRedirect: true, // Crucial for mobile apps
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
       },
     });
 
@@ -49,24 +53,51 @@ export const startGoogleOAuth = async () => {
     );
 
     if (result.type === 'success' && result.url) {
-      console.log('[OAuth] OAuth redirect successful');
-      
+      console.log('[OAuth] OAuth redirect successful, URL:', result.url);
+
       const url = new URL(result.url);
-      const code = url.searchParams.get('code');
-      
+
+      // Check query params first
+      let code = url.searchParams.get('code');
+
+      // If not in query params, check hash fragment (Supabase often uses this)
+      if (!code && url.hash) {
+        const hashParams = new URLSearchParams(url.hash.substring(1));
+        code = hashParams.get('code');
+
+        // If we got access_token directly in hash (implicit flow), handle it
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken) {
+          console.log('[OAuth] Found access token in hash, setting session...');
+          const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
+
+          if (sessionError) {
+            console.error('[OAuth] Set session failed:', sessionError);
+            return { error: sessionError, data: null };
+          }
+
+          console.log('[OAuth] Google OAuth successful via token');
+          return { data: { data: sessionData }, error: null };
+        }
+      }
+
       if (code) {
         console.log('[OAuth] Exchanging code for session...');
         const sessionResult = await supabase.auth.exchangeCodeForSession(code);
-        
+
         if (sessionResult.error) {
           console.error('[OAuth] Code exchange failed:', sessionResult.error);
           return { error: sessionResult.error, data: null };
         }
-        
+
         console.log('[OAuth] Google OAuth successful');
         return { data: sessionResult, error: null };
       } else {
-        console.error('[OAuth] No authorization code in redirect URL');
+        console.error('[OAuth] No authorization code in redirect URL. Hash:', url.hash, 'Search:', url.search);
         return { error: new Error('No authorization code received'), data: null };
       }
     }
@@ -121,24 +152,51 @@ export const startAppleOAuth = async () => {
     );
 
     if (result.type === 'success' && result.url) {
-      console.log('[OAuth] OAuth redirect successful');
-      
+      console.log('[OAuth] OAuth redirect successful, URL:', result.url);
+
       const url = new URL(result.url);
-      const code = url.searchParams.get('code');
-      
+
+      // Check query params first
+      let code = url.searchParams.get('code');
+
+      // If not in query params, check hash fragment (Supabase often uses this)
+      if (!code && url.hash) {
+        const hashParams = new URLSearchParams(url.hash.substring(1));
+        code = hashParams.get('code');
+
+        // If we got access_token directly in hash (implicit flow), handle it
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken) {
+          console.log('[OAuth] Found access token in hash, setting session...');
+          const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
+
+          if (sessionError) {
+            console.error('[OAuth] Set session failed:', sessionError);
+            return { error: sessionError, data: null };
+          }
+
+          console.log('[OAuth] Apple OAuth successful via token');
+          return { data: { data: sessionData }, error: null };
+        }
+      }
+
       if (code) {
         console.log('[OAuth] Exchanging code for session...');
         const sessionResult = await supabase.auth.exchangeCodeForSession(code);
-        
+
         if (sessionResult.error) {
           console.error('[OAuth] Code exchange failed:', sessionResult.error);
           return { error: sessionResult.error, data: null };
         }
-        
+
         console.log('[OAuth] Apple OAuth successful');
         return { data: sessionResult, error: null };
       } else {
-        console.error('[OAuth] No authorization code in redirect URL');
+        console.error('[OAuth] No authorization code in redirect URL. Hash:', url.hash, 'Search:', url.search);
         return { error: new Error('No authorization code received'), data: null };
       }
     }

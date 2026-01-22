@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 export interface WellnessGoal {
   id: string;
@@ -67,10 +68,8 @@ export const useGoalsStore = create<GoalsState>()(
             throw new Error("Not authenticated");
           }
 
-          const API_URL =
-            process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.116:8000";
           const response = await fetch(
-            `${API_URL}/api/v1/wellness/goals?status=${status}`,
+            `${API_BASE_URL}/api/v1/wellness/goals?status=${status}`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -105,9 +104,7 @@ export const useGoalsStore = create<GoalsState>()(
             throw new Error("Not authenticated");
           }
 
-          const API_URL =
-            process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.116:8000";
-          const response = await fetch(`${API_URL}/api/v1/wellness/goals`, {
+          const response = await fetch(`${API_BASE_URL}/api/v1/wellness/goals`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${token}`,
@@ -140,10 +137,8 @@ export const useGoalsStore = create<GoalsState>()(
             throw new Error("Not authenticated");
           }
 
-          const API_URL =
-            process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.116:8000";
           const response = await fetch(
-            `${API_URL}/api/v1/wellness/goals/${goalId}`,
+            `${API_BASE_URL}/api/v1/wellness/goals/${goalId}`,
             {
               method: "PUT",
               headers: {
@@ -176,10 +171,8 @@ export const useGoalsStore = create<GoalsState>()(
             throw new Error("Not authenticated");
           }
 
-          const API_URL =
-            process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.116:8000";
           const response = await fetch(
-            `${API_URL}/api/v1/wellness/goals/${goalId}`,
+            `${API_BASE_URL}/api/v1/wellness/goals/${goalId}`,
             {
               method: "DELETE",
               headers: {
@@ -211,10 +204,8 @@ export const useGoalsStore = create<GoalsState>()(
             throw new Error("Not authenticated");
           }
 
-          const API_URL =
-            process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.116:8000";
           const response = await fetch(
-            `${API_URL}/api/v1/wellness/goals/suggestions`,
+            `${API_BASE_URL}/api/v1/wellness/goals/suggestions`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,

@@ -4,13 +4,14 @@
 
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography } from '../constants/theme';
 import { Card } from './Card';
 
 interface StatTileProps {
   label: string;
   value: string | number;
-  icon?: React.ReactNode;
+  icon?: string | React.ReactNode;
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
   onPress?: () => void;
@@ -27,9 +28,18 @@ export const StatTile: React.FC<StatTileProps> = ({
   const trendColor =
     trend === 'up' ? Colors.success : trend === 'down' ? Colors.error : Colors.textSecondary;
 
+  // Render icon - handle both string icon names and React nodes
+  const renderIcon = () => {
+    if (!icon) return null;
+    if (typeof icon === 'string') {
+      return <Ionicons name={icon as any} size={24} color={Colors.primary} />;
+    }
+    return icon;
+  };
+
   const content = (
     <View style={styles.container}>
-      {icon && <View style={styles.iconContainer}>{icon}</View>}
+      {icon && <View style={styles.iconContainer}>{renderIcon()}</View>}
       <View style={styles.content}>
         <Text style={styles.value}>{value}</Text>
         <Text style={styles.label}>{label}</Text>

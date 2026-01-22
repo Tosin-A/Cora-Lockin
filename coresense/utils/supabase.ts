@@ -53,6 +53,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    flowType: 'pkce', // Required for mobile OAuth
   },
 });
 

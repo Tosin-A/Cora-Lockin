@@ -28,6 +28,10 @@ export interface UserPreferences {
   goals: string[];
   healthkit_enabled: boolean;
   healthkit_sync_frequency: string;
+  // Notification preferences
+  push_notifications?: boolean;
+  task_reminders?: boolean;
+  weekly_reports?: boolean;
   created_at?: string;
   updated_at?: string;
 }

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Spacing, Typography, BorderRadius } from "../constants/theme";
 import { Card } from "../components";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 export default function HealthLogScreen() {
   const insets = useSafeAreaInsets();
@@ -61,9 +62,7 @@ export default function HealthLogScreen() {
         return;
       }
 
-      const API_URL =
-        process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.116:8000";
-      const response = await fetch(`${API_URL}/api/v1/wellness/logs`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/wellness/logs`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,

@@ -1,4 +1,4 @@
-package com.coresense
+package com.coresense.app
 
 import android.app.Application
 import android.content.res.Configuration

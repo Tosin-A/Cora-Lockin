@@ -920,6 +920,60 @@ export async function upgradeToPro(
   return { success: data?.success || false, error };
 }
 
+// ============================================================================
+// COMMITMENT INSIGHTS API
+// ============================================================================
+
+/**
+ * Commitment Insights response data structure
+ */
+export interface CommitmentInsightsData {
+  coach_summary: string | null;
+  patterns: Array<{
+    id: string;
+    type: string;
+    title: string;
+    coach_commentary: string;
+    evidence: {
+      type: string;
+      labels: string[];
+      values: number[];
+      highlight_index?: number;
+      trend_direction: 'up' | 'down' | 'stable';
+      trend_value?: string;
+    };
+    action_text?: string;
+    is_new: boolean;
+    created_at: string;
+  }>;
+  has_enough_data: boolean;
+  days_until_enough_data?: number;
+}
+
+/**
+ * Get commitment-pattern-focused insights with AI coach interpretation.
+ */
+export async function getCommitmentInsights(): Promise<{
+  data: CommitmentInsightsData | null;
+  error: string | null;
+}> {
+  return apiRequest<CommitmentInsightsData>("/api/v1/insights/commitment-patterns");
+}
+
+/**
+ * Record user reaction (helpful/not helpful) to an insight.
+ */
+export async function recordInsightReaction(
+  insightId: string,
+  helpful: boolean,
+): Promise<{ success: boolean; error: string | null }> {
+  const { data, error } = await apiRequest<{ success: boolean }>(
+    `/api/v1/insights/${insightId}/reaction`,
+    { method: "POST", body: { helpful } },
+  );
+  return { success: data?.success || false, error };
+}
+
 // Export all functions
 export const coresenseApi = {
   // Home
@@ -929,6 +983,8 @@ export const coresenseApi = {
   getInsights,
   saveInsight,
   dismissInsight,
+  getCommitmentInsights,
+  recordInsightReaction,
 
   // Engagement
   getDailyPrompt,

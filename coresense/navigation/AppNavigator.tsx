@@ -1,6 +1,7 @@
 /**
  * Main App Navigator
- * 4-Tab Structure: Home, Insights, Engage, Settings
+ * 4-Tab Structure: Home, Insights, Coach, Settings
+ * Includes badge support for new insights
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -9,6 +10,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TouchableOpacity, View, StyleSheet } from 'react-native';
 import { useAuthStore } from '../stores/authStore';
+import { useInsightsStore } from '../stores/insightsStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../constants/theme';
 import * as Linking from 'expo-linking';
@@ -23,7 +25,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import InsightsScreen from '../screens/InsightsScreen';
 // import EngagementScreen from '../screens/EngagementScreen'; // Removed per user request
-import PreferencesScreen from '../screens/PreferencesScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 import AccountScreen from '../screens/AccountScreen';
 import CoachChatScreen from '../screens/CoachChatScreen';
 
@@ -31,6 +33,9 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
+  // Check for new insights
+  const hasNewInsights = useInsightsStore((state) => state.hasNewInsights());
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -75,6 +80,7 @@ function MainTabs() {
           tabBarIcon: ({ color, size, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
               <Ionicons name={focused ? 'analytics' : 'analytics-outline'} size={22} color={color} />
+              {hasNewInsights && <View style={styles.badgeDot} />}
             </View>
           ),
         }}
@@ -94,7 +100,7 @@ function MainTabs() {
       />
       <Tab.Screen
         name="Settings"
-        component={PreferencesScreen}
+        component={SettingsScreen}
         options={{
           tabBarLabel: 'Settings',
           tabBarIcon: ({ color, size, focused }) => (
@@ -114,6 +120,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 6,
     marginTop: -2,
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.neonPink,
   },
 });
 
@@ -140,6 +155,7 @@ export default function AppNavigator() {
             const mappedUser: User = {
               id: session.user.id,
               email: session.user.email || '',
+              username: session.user.email?.split('@')[0] || null,
               full_name: session.user.user_metadata?.full_name || null,
               avatar_url: session.user.user_metadata?.avatar_url || null,
               created_at: session.user.created_at,
@@ -164,6 +180,7 @@ export default function AppNavigator() {
           const mappedUser: User = {
             id: session.user.id,
             email: session.user.email || '',
+            username: session.user.email?.split('@')[0] || null,
             full_name: session.user.user_metadata?.full_name || null,
             avatar_url: session.user.user_metadata?.avatar_url || null,
             created_at: session.user.created_at,
@@ -287,10 +304,12 @@ export default function AppNavigator() {
     };
   }, [checkAuth]);
 
-  // Initialize HealthKit on component mount if user is already authenticated
+  // Initialize HealthKit and prefetch insights on component mount if user is already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      console.log('[AppNavigator] User already authenticated, initializing HealthKit...');
+      console.log('[AppNavigator] User already authenticated, initializing services...');
+
+      // Initialize HealthKit
       initializeHealthKit()
         .then((status) => {
           console.log('[AppNavigator] HealthKit initialized on mount:', status);
@@ -301,6 +320,10 @@ export default function AppNavigator() {
         .catch((error) => {
           console.error('[AppNavigator] HealthKit initialization failed on mount:', error);
         });
+
+      // Prefetch commitment insights for badge display
+      console.log('[AppNavigator] Prefetching commitment insights...');
+      useInsightsStore.getState().fetchCommitmentInsights();
     }
   }, [isAuthenticated]);
 

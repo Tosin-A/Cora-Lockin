@@ -57,6 +57,7 @@ export const Colors = {
   surfaceLight: '#1A1A1A',      // Lighter surface variant
   accent: '#8B5CF6',            // Maps to primary for compatibility
   border: 'rgba(255, 255, 255, 0.1)', // Standard border color
+  borderPurple: 'rgba(139, 92, 246, 0.3)', // Purple-tinted border for cards
 } as const;
 
 export const Spacing = {

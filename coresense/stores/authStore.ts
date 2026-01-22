@@ -5,7 +5,8 @@
 
 import { create } from "zustand";
 import { supabase } from "../utils/supabase";
-import { startGoogleOAuth, handleOAuthError } from "../utils/oauth";
+import { startGoogleOAuth, startAppleOAuth, handleOAuthError } from "../utils/oauth";
+import { API_BASE_URL } from "../utils/apiConfig";
 import type { User } from "../types";
 
 // Helper function to initialize user data for new signups
@@ -27,7 +28,7 @@ async function initializeUserForNewSignup(
     }
 
     const response = await fetch(
-      `${process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.116:8000"}/api/v1/user/initialize`,
+      `${API_BASE_URL}/api/v1/user/initialize`,
       {
         method: "POST",
         headers: {
@@ -64,9 +65,11 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   googleLoading: boolean;
+  appleLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
   signOut: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
@@ -76,6 +79,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
   isAuthenticated: false,
   googleLoading: false,
+  appleLoading: false,
 
   checkAuth: async () => {
     try {
@@ -316,6 +320,49 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error: any) {
       console.error("[AuthStore] Google OAuth exception:", error);
       set({ googleLoading: false });
+      throw error;
+    }
+  },
+
+  signInWithApple: async () => {
+    set({ appleLoading: true });
+    try {
+      console.log("[AuthStore] Starting Apple OAuth...");
+
+      const { data, error } = await startAppleOAuth();
+
+      if (error) {
+        console.error("[AuthStore] Apple OAuth error:", error);
+        throw error;
+      }
+
+      if (!data?.data?.user) {
+        console.error("[AuthStore] No user returned from Apple OAuth");
+        throw new Error("Apple sign-in failed. Please try again.");
+      }
+
+      console.log("[AuthStore] Apple OAuth success, user:", data.data.user.id);
+
+      const mappedUser: User = {
+        id: data.data.user.id,
+        email: data.data.user.email || "",
+        username: data.data.user.email?.split("@")[0] || "",
+        full_name: data.data.user.user_metadata?.full_name || null,
+        avatar_url: data.data.user.user_metadata?.avatar_url || null,
+        created_at: data.data.user.created_at,
+      };
+
+      set({
+        user: mappedUser,
+        isAuthenticated: true,
+        appleLoading: false,
+      });
+
+      // Trigger checkAuth to ensure session is properly synced
+      await get().checkAuth();
+    } catch (error: any) {
+      console.error("[AuthStore] Apple OAuth exception:", error);
+      set({ appleLoading: false });
       throw error;
     }
   },
