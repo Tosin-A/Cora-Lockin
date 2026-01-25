@@ -513,7 +513,8 @@ class HealthInsightsEngine:
                     "pattern_data": pattern_data,
                     "calculated_at": datetime.utcnow().isoformat(),
                     "valid_until": (datetime.utcnow() + timedelta(days=7)).isoformat(),
-                }
+                },
+                on_conflict="user_id,pattern_type",
             ).execute()
         except Exception as e:
             logger.warning(f"Failed to upsert health pattern: {e}")
