@@ -5,7 +5,6 @@
 
 import { create } from 'zustand';
 import {
-  syncHealthMetrics,
   getDailySteps,
   getDailySleep,
   updateHealthSyncStatus,
@@ -13,12 +12,16 @@ import {
   type HealthMetric,
   type HealthSyncStatus,
 } from '../utils/api';
+import { coresenseApi } from '../utils/coresenseApi';
 import {
   getTodayHealthData,
   getWeeklyHealthData,
   initializeHealthKit,
   checkPermissions,
+  getDetailedSleepForDate,
+  getDetailedDailySleep,
   type HealthData,
+  type DetailedSleepData,
 } from '../utils/healthService';
 import { format, subDays, startOfDay } from 'date-fns';
 
@@ -227,26 +230,44 @@ export const useHealthStore = create<HealthState>((set, get) => ({
         }
       });
 
-      // Add sleep data
-      if (todayData.sleepHours > 0) {
-        // Last night's sleep is recorded for previous day
-        const sleepDate = subDays(today, 1);
-        metrics.push({
-          metric_type: 'sleep_duration',
-          value: todayData.sleepHours,
-          unit: 'hour',
-          recorded_at: startOfDay(sleepDate).toISOString(),
-          source: 'healthkit',
-        });
-      }
+      // Get detailed sleep data with bedtime and wake time
+      const detailedSleep = await getDetailedDailySleep(startDate, endDate);
 
-      // Add weekly sleep
-      weeklyData.sleep.forEach((day) => {
-        const dayDate = startOfDay(day.date);
-        if (dayDate.getTime() !== subDays(today, 1).getTime()) {
+      // Add detailed sleep data (duration, bedtime, wake time)
+      detailedSleep.forEach((sleepData) => {
+        const dayDate = startOfDay(sleepData.date);
+
+        // Sleep duration
+        if (sleepData.durationHours > 0) {
           metrics.push({
             metric_type: 'sleep_duration',
-            value: day.hours,
+            value: sleepData.durationHours,
+            unit: 'hour',
+            recorded_at: dayDate.toISOString(),
+            source: 'healthkit',
+          });
+        }
+
+        // Bedtime (stored as decimal hours, e.g., 22.5 = 10:30 PM)
+        if (sleepData.bedtime) {
+          const bedtimeHours =
+            sleepData.bedtime.getHours() + sleepData.bedtime.getMinutes() / 60;
+          metrics.push({
+            metric_type: 'sleep_start',
+            value: bedtimeHours,
+            unit: 'hour',
+            recorded_at: dayDate.toISOString(),
+            source: 'healthkit',
+          });
+        }
+
+        // Wake time (stored as decimal hours, e.g., 7.25 = 7:15 AM)
+        if (sleepData.wakeTime) {
+          const wakeTimeHours =
+            sleepData.wakeTime.getHours() + sleepData.wakeTime.getMinutes() / 60;
+          metrics.push({
+            metric_type: 'sleep_end',
+            value: wakeTimeHours,
             unit: 'hour',
             recorded_at: dayDate.toISOString(),
             source: 'healthkit',
@@ -254,8 +275,110 @@ export const useHealthStore = create<HealthState>((set, get) => ({
         }
       });
 
-      // Sync to Supabase
-      const { error } = await syncHealthMetrics(metrics, userId);
+      // Also add today's detailed sleep if not already covered
+      const todayDetailedSleep = await getDetailedSleepForDate(new Date());
+      const yesterdayDate = startOfDay(subDays(today, 1));
+
+      // Check if yesterday's sleep is already in detailedSleep
+      const hasYesterdaySleep = detailedSleep.some(
+        (s) => startOfDay(s.date).getTime() === yesterdayDate.getTime()
+      );
+
+      if (!hasYesterdaySleep && todayDetailedSleep.durationHours > 0) {
+        metrics.push({
+          metric_type: 'sleep_duration',
+          value: todayDetailedSleep.durationHours,
+          unit: 'hour',
+          recorded_at: yesterdayDate.toISOString(),
+          source: 'healthkit',
+        });
+
+        if (todayDetailedSleep.bedtime) {
+          const bedtimeHours =
+            todayDetailedSleep.bedtime.getHours() +
+            todayDetailedSleep.bedtime.getMinutes() / 60;
+          metrics.push({
+            metric_type: 'sleep_start',
+            value: bedtimeHours,
+            unit: 'hour',
+            recorded_at: yesterdayDate.toISOString(),
+            source: 'healthkit',
+          });
+        }
+
+        if (todayDetailedSleep.wakeTime) {
+          const wakeTimeHours =
+            todayDetailedSleep.wakeTime.getHours() +
+            todayDetailedSleep.wakeTime.getMinutes() / 60;
+          metrics.push({
+            metric_type: 'sleep_end',
+            value: wakeTimeHours,
+            unit: 'hour',
+            recorded_at: yesterdayDate.toISOString(),
+            source: 'healthkit',
+          });
+        }
+      }
+
+      // De-dupe any rows that share the same metric_type + recorded_at
+      const mergedMetrics = new Map<string, Omit<HealthMetric, 'id' | 'user_id'>>();
+      metrics.forEach((metric) => {
+        const key = `${metric.metric_type}:${metric.recorded_at}`;
+        const existing = mergedMetrics.get(key);
+        if (!existing) {
+          mergedMetrics.set(key, metric);
+          return;
+        }
+        if (metric.metric_type === 'steps') {
+          // Sum steps
+          mergedMetrics.set(key, {
+            ...existing,
+            value: existing.value + metric.value,
+          });
+          return;
+        }
+        if (metric.metric_type === 'sleep_duration') {
+          // Take max sleep duration
+          mergedMetrics.set(key, {
+            ...existing,
+            value: Math.max(existing.value, metric.value),
+          });
+          return;
+        }
+        if (metric.metric_type === 'sleep_start') {
+          // Take earliest bedtime (min value)
+          mergedMetrics.set(key, {
+            ...existing,
+            value: Math.min(existing.value, metric.value),
+          });
+          return;
+        }
+        if (metric.metric_type === 'sleep_end') {
+          // Take latest wake time (max value)
+          mergedMetrics.set(key, {
+            ...existing,
+            value: Math.max(existing.value, metric.value),
+          });
+          return;
+        }
+        mergedMetrics.set(key, metric);
+      });
+
+      const payload = Array.from(mergedMetrics.values()).filter(
+        (metric) => metric.value > 0
+      );
+      if (payload.length === 0) {
+        console.warn('[HealthStore] No non-zero health metrics to sync');
+        await updateHealthSyncStatus(userId, {
+          sync_status: 'idle',
+          last_synced_at: new Date().toISOString(),
+        });
+        set({ isSyncing: false });
+        return;
+      }
+
+      // Sync to backend (writes to Supabase server-side)
+      const { error } = await coresenseApi.syncHealthData({ metrics: payload });
 
       if (error) {
         throw error;

@@ -74,6 +74,13 @@ export interface HealthData {
   date: Date;
 }
 
+export interface DetailedSleepData {
+  date: Date;           // The date this sleep is attributed to (wake date)
+  durationHours: number;
+  bedtime: Date | null;  // When they went to bed
+  wakeTime: Date | null; // When they woke up
+}
+
 export interface HealthKitStatus {
   isAvailable: boolean;
   permissionsGranted: boolean;
@@ -399,6 +406,89 @@ export const getSleepForDate = (date: Date): Promise<number> => {
 };
 
 /**
+ * Get detailed sleep data for a specific date (includes bedtime and wake time)
+ */
+export const getDetailedSleepForDate = (date: Date): Promise<DetailedSleepData> => {
+  return new Promise((resolve, reject) => {
+    if (Platform.OS !== 'ios' || !AppleHealthKit) {
+      resolve({
+        date,
+        durationHours: 0,
+        bedtime: null,
+        wakeTime: null,
+      });
+      return;
+    }
+
+    // Get sleep from the previous night
+    const startOfSleep = new Date(date);
+    startOfSleep.setDate(startOfSleep.getDate() - 1);
+    startOfSleep.setHours(18, 0, 0, 0); // Evening before
+
+    const endOfSleep = new Date(date);
+    endOfSleep.setHours(12, 0, 0, 0); // Noon of current day
+
+    const options: any = {
+      startDate: startOfSleep.toISOString(),
+      endDate: endOfSleep.toISOString(),
+    };
+
+    AppleHealthKit?.getSleepSamples(options, (error: Object, results: any[]) => {
+      if (error) {
+        console.error('Error fetching detailed sleep:', error);
+        resolve({
+          date,
+          durationHours: 0,
+          bedtime: null,
+          wakeTime: null,
+        });
+        return;
+      }
+
+      // Filter for actual sleep samples (not "in bed" samples)
+      const sleepSamples = results.filter(
+        (sample) => sample.value === AppleHealthKit?.Constants?.Sleep?.SLEEPING
+      );
+
+      if (sleepSamples.length === 0) {
+        resolve({
+          date,
+          durationHours: 0,
+          bedtime: null,
+          wakeTime: null,
+        });
+        return;
+      }
+
+      // Calculate total sleep and find earliest bedtime / latest wake time
+      let totalSleepSeconds = 0;
+      let earliestBedtime: Date | null = null;
+      let latestWakeTime: Date | null = null;
+
+      sleepSamples.forEach((sample) => {
+        const start = new Date(sample.startDate);
+        const end = new Date(sample.endDate);
+        totalSleepSeconds += (end.getTime() - start.getTime()) / 1000;
+
+        if (!earliestBedtime || start < earliestBedtime) {
+          earliestBedtime = start;
+        }
+        if (!latestWakeTime || end > latestWakeTime) {
+          latestWakeTime = end;
+        }
+      });
+
+      resolve({
+        date,
+        durationHours: totalSleepSeconds / 3600,
+        bedtime: earliestBedtime,
+        wakeTime: latestWakeTime,
+      });
+    });
+  });
+};
+
+/**
  * Get sleep duration for a date range
  */
 export const getDailySleep = (
@@ -447,6 +537,80 @@ export const getDailySleep = (
       }));
 
       resolve(dailySleep);
+    });
+  });
+};
+
+/**
+ * Get detailed sleep data for a date range (includes bedtime and wake time)
+ */
+export const getDetailedDailySleep = (
+  startDate: Date,
+  endDate: Date
+): Promise<DetailedSleepData[]> => {
+  return new Promise((resolve, reject) => {
+    if (Platform.OS !== 'ios' || !AppleHealthKit) {
+      resolve([]);
+      return;
+    }
+
+    const options: any = {
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+    };
+
+    AppleHealthKit?.getSleepSamples(options, (error: Object, results: any[]) => {
+      if (error) {
+        console.error('Error fetching detailed daily sleep:', error);
+        resolve([]);
+        return;
+      }
+
+      // Group sleep by wake date (when sleep ended)
+      const sleepByDate: Record<string, {
+        totalSeconds: number;
+        bedtime: Date | null;
+        wakeTime: Date | null;
+      }> = {};
+
+      results.forEach((sample) => {
+        if (sample.value === AppleHealthKit?.Constants?.Sleep?.SLEEPING) {
+          const wakeDate = new Date(sample.endDate);
+          const dateKey = wakeDate.toISOString().split('T')[0]; // YYYY-MM-DD
+          const start = new Date(sample.startDate);
+          const end = new Date(sample.endDate);
+          const seconds = (end.getTime() - start.getTime()) / 1000;
+
+          if (!sleepByDate[dateKey]) {
+            sleepByDate[dateKey] = {
+              totalSeconds: 0,
+              bedtime: null,
+              wakeTime: null,
+            };
+          }
+
+          sleepByDate[dateKey].totalSeconds += seconds;
+
+          // Track earliest bedtime and latest wake time
+          if (!sleepByDate[dateKey].bedtime || start < sleepByDate[dateKey].bedtime!) {
+            sleepByDate[dateKey].bedtime = start;
+          }
+          if (!sleepByDate[dateKey].wakeTime || end > sleepByDate[dateKey].wakeTime!) {
+            sleepByDate[dateKey].wakeTime = end;
+          }
+        }
+      });
+
+      const detailedSleep: DetailedSleepData[] = Object.entries(sleepByDate).map(
+        ([dateKey, data]) => ({
+          date: new Date(dateKey),
+          durationHours: data.totalSeconds / 3600,
+          bedtime: data.bedtime,
+          wakeTime: data.wakeTime,
+        })
+      );
+
+      resolve(detailedSleep);
     });
   });
 };

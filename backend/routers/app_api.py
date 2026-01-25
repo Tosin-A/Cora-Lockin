@@ -44,6 +44,19 @@ class PreferencesUpdateRequest(BaseModel):
     healthkit_enabled: Optional[bool] = None
 
 
+class HealthMetricIn(BaseModel):
+    metric_type: str
+    value: float
+    unit: str
+    recorded_at: datetime
+    source: Optional[str] = "healthkit"
+    metadata: Optional[dict] = None
+
+
+class HealthSyncRequest(BaseModel):
+    metrics: List[HealthMetricIn]
+
+
 class MetricLogRequest(BaseModel):
     """Request to log a single metric."""
     metric_type: str  # 'energy', 'mood', 'sleep', 'stress', 'focus'
@@ -1106,11 +1119,55 @@ async def update_preferences(request: PreferencesUpdateRequest, user_id: str = D
 # ============================================
 
 @router.post("/health/sync")
-async def sync_health_data(user_id: str = Depends(get_current_user_id)):
+async def sync_health_data(
+    request: HealthSyncRequest,
+    user_id: str = Depends(get_current_user_id)
+):
     """Sync health data from mobile app."""
-    # This endpoint receives health data from the mobile app
-    # Implementation depends on request body format from healthStore
-    return {"success": True, "message": "Health sync endpoint - implement based on mobile data format"}
+    try:
+        if not request.metrics:
+            return {"success": True, "inserted": 0}
+
+        # De-dupe metrics by metric_type + recorded_at
+        merged = {}
+        for metric in request.metrics:
+            key = f"{metric.metric_type}:{metric.recorded_at.isoformat()}"
+            if key not in merged:
+                merged[key] = metric
+                continue
+            existing = merged[key]
+            if metric.metric_type == "steps":
+                existing.value += metric.value
+            elif metric.metric_type == "sleep_duration":
+                existing.value = max(existing.value, metric.value)
+            else:
+                merged[key] = metric
+
+        payload = []
+        for metric in merged.values():
+            payload.append({
+                "user_id": user_id,
+                "metric_type": metric.metric_type,
+                "value": metric.value,
+                "unit": metric.unit,
+                "recorded_at": metric.recorded_at.isoformat(),
+                "source": metric.source,
+                "metadata": metric.metadata or {},
+            })
+
+        supabase = get_supabase_client()
+        response = supabase.table("health_metrics").upsert(
+            payload, on_conflict="user_id,metric_type,recorded_at"
+        ).execute()
+
+        # Daily aggregation now happens via health_metrics_daily database view
+        # No need to maintain separate user_health_data table
+
+        return {"success": True, "inserted": len(payload)}
+
+    except Exception as e:
+        logger.error(f"Error syncing health data: {e}")
+        raise DatabaseError("Failed to sync health data", original_error=e)
 
 
 @router.get("/health/summary")
