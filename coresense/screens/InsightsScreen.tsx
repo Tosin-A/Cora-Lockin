@@ -19,6 +19,7 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -26,14 +27,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
 import { Card } from '../components';
 import { CoachCommentary, PatternCard } from '../components/insights';
+import { QuickLogModal } from '../components/metrics';
 import { useAuthStore } from '../stores/authStore';
 import { useInsightsStore } from '../stores/insightsStore';
+import { useMetricsStore } from '../stores/metricsStore';
+import { useHealthStore } from '../stores/healthStore';
 import {
   InsightType,
   PatternType,
   InsightsScreenData,
   InsightData,
 } from '../types/insights';
+import type { MetricInput } from '../types/metrics';
 
 export default function InsightsScreen() {
   const insets = useSafeAreaInsets();
@@ -42,34 +47,55 @@ export default function InsightsScreen() {
 
   // Insights store
   const {
-    commitmentInsights,
+    healthInsights,
     loading,
     error,
-    fetchCommitmentInsights,
+    fetchHealthInsights,
     dismissInsight,
     recordReaction,
   } = useInsightsStore();
 
-  const [refreshing, setRefreshing] = useState(false);
+  // Metrics store
+  const { logBatchMetrics } = useMetricsStore();
 
-  // Fetch insights on focus
+  // Health store - for syncing HealthKit data on refresh
+  const { syncToSupabase, permissionsGranted } = useHealthStore();
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [showQuickLog, setShowQuickLog] = useState(false);
+
+  // Sync HealthKit data and fetch insights on focus
   useFocusEffect(
     useCallback(() => {
-      console.log('[InsightsScreen] Focus effect - fetching insights');
-      fetchCommitmentInsights();
-    }, [fetchCommitmentInsights])
+      const syncAndFetch = async () => {
+        console.log('[InsightsScreen] Focus effect - syncing health data and fetching insights');
+        if (permissionsGranted && user?.id) {
+          await syncToSupabase(user.id);
+        }
+        await fetchHealthInsights();
+      };
+      syncAndFetch();
+    }, [fetchHealthInsights, syncToSupabase, permissionsGranted, user?.id])
   );
 
-  // Pull to refresh
+  // Pull to refresh - sync HealthKit first, then fetch insights
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetchCommitmentInsights();
+      if (permissionsGranted && user?.id) {
+        await syncToSupabase(user.id);
+      }
+      await fetchHealthInsights();
     } catch (err) {
       console.error('Refresh error:', err);
     } finally {
       setRefreshing(false);
     }
+  };
+
+  // Handle quick log submission
+  const handleQuickLogSubmit = async (metrics: MetricInput[]): Promise<boolean> => {
+    return await logBatchMetrics(metrics);
   };
 
   // Handle asking coach about an insight
@@ -95,34 +121,18 @@ export default function InsightsScreen() {
     await dismissInsight(insightId);
   };
 
-  // Determine coach expression based on insights
-  const getCoachExpression = (): 'happy' | 'thoughtful' | 'encouraging' | 'concerned' => {
-    if (!commitmentInsights?.patterns?.length) return 'thoughtful';
-
-    const hasRisk = commitmentInsights.patterns.some(
-      (p) => p.type === InsightType.PROGRESS || p.type === 'progress'
-    );
-    const hasProgress = commitmentInsights.patterns.some(
-      (p) => p.type === InsightType.PROGRESS || p.type === 'progress'
-    );
-
-    if (hasProgress && !hasRisk) return 'happy';
-    if (hasRisk) return 'concerned';
-    return 'encouraging';
-  };
-
   // Loading state
-  if (loading && !commitmentInsights) {
+  if (loading && !healthInsights) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Analyzing your patterns...</Text>
+        <Text style={styles.loadingText}>Analyzing your health data...</Text>
       </View>
     );
   }
 
   // Error state
-  if (error && !commitmentInsights) {
+  if (error && !healthInsights) {
     return (
       <ScrollView
         style={styles.container}
@@ -141,10 +151,21 @@ export default function InsightsScreen() {
           />
         }
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>Insights</Text>
-          <Text style={styles.subtitle}>Pull down to retry</Text>
+        {/* Header with Quick Log Button */}
+        <View style={styles.headerRow}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Insights</Text>
+            <Text style={styles.subtitle}>Pull down to retry</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.quickLogButton}
+            onPress={() => setShowQuickLog(true)}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+          >
+            <Ionicons name="add-circle" size={32} color={Colors.primary} />
+          </TouchableOpacity>
         </View>
+
         <Card style={styles.errorCard}>
           <View style={styles.errorContent}>
             <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
@@ -152,13 +173,21 @@ export default function InsightsScreen() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         </Card>
+
+        {/* Quick Log Modal */}
+        <QuickLogModal
+          visible={showQuickLog}
+          onClose={() => setShowQuickLog(false)}
+          onSubmit={handleQuickLogSubmit}
+        />
       </ScrollView>
     );
   }
 
-  // Empty state - not enough data
-  if (!commitmentInsights?.has_enough_data) {
-    const daysRemaining = commitmentInsights?.days_until_enough_data || 3;
+  // Empty state - not enough data for patterns
+  if (!healthInsights?.has_enough_data) {
+    const daysRemaining = healthInsights?.days_until_enough_data || 3;
+    const hasNoHealthData = daysRemaining >= 6;
 
     return (
       <ScrollView
@@ -178,17 +207,36 @@ export default function InsightsScreen() {
           />
         }
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>Insights</Text>
-          <Text style={styles.subtitle}>Your commitment patterns</Text>
+        {/* Header with Quick Log Button */}
+        <View style={styles.headerRow}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Insights</Text>
+            <Text style={styles.subtitle}>Health-first insights</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.quickLogButton}
+            onPress={() => setShowQuickLog(true)}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+          >
+            <Ionicons name="add-circle" size={32} color={Colors.primary} />
+          </TouchableOpacity>
         </View>
+
+        {/* Patterns Empty State */}
         <Card style={styles.emptyCard}>
           <View style={styles.emptyContent}>
-            <Ionicons name="analytics-outline" size={64} color={Colors.textTertiary} />
-            <Text style={styles.emptyTitle}>Building Your Patterns</Text>
+            <Ionicons
+              name={hasNoHealthData ? 'leaf-outline' : 'pulse-outline'}
+              size={64}
+              color={Colors.textTertiary}
+            />
+            <Text style={styles.emptyTitle}>
+              {hasNoHealthData ? 'Waiting for health data' : 'Analyzing your health data...'}
+            </Text>
             <Text style={styles.emptyText}>
-              I need a bit more data to spot meaningful patterns in your commitments.
-              Check back in {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'}.
+              {hasNoHealthData
+                ? "Sync your Health data to get sleep and activity insights."
+                : "Give me a few seconds. I'm looking at your sleep and activity from the last week."}
             </Text>
             <View style={styles.emptyProgress}>
               <View style={styles.emptyProgressBar}>
@@ -200,17 +248,24 @@ export default function InsightsScreen() {
                 />
               </View>
               <Text style={styles.emptyProgressText}>
-                Keep completing commitments!
+                {hasNoHealthData ? 'Open Health tab to sync' : '— Coach'}
               </Text>
             </View>
           </View>
         </Card>
+
+        {/* Quick Log Modal */}
+        <QuickLogModal
+          visible={showQuickLog}
+          onClose={() => setShowQuickLog(false)}
+          onSubmit={handleQuickLogSubmit}
+        />
       </ScrollView>
     );
   }
 
   // Data state - show insights
-  const patterns = commitmentInsights.patterns || [];
+  const patterns = healthInsights.patterns || [];
 
   return (
     <ScrollView
@@ -232,16 +287,24 @@ export default function InsightsScreen() {
       }
     >
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Insights</Text>
-        <Text style={styles.subtitle}>Your commitment patterns</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>Insights</Text>
+          <Text style={styles.subtitle}>Your health patterns</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.quickLogButton}
+          onPress={() => setShowQuickLog(true)}
+          hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+        >
+          <Ionicons name="add-circle" size={32} color={Colors.primary} />
+        </TouchableOpacity>
       </View>
 
       {/* Coach Summary */}
-      {commitmentInsights.coach_summary && (
+      {healthInsights.coach_summary && (
         <CoachCommentary
-          commentary={commitmentInsights.coach_summary}
-          expression={getCoachExpression()}
+          commentary={healthInsights.coach_summary}
         />
       )}
 
@@ -276,14 +339,13 @@ export default function InsightsScreen() {
       )}
 
       {/* No patterns but has enough data */}
-      {patterns.length === 0 && commitmentInsights.has_enough_data && (
+      {patterns.length === 0 && healthInsights.has_enough_data && (
         <Card style={styles.emptyCard}>
           <View style={styles.emptyContent}>
             <Ionicons name="checkmark-circle-outline" size={48} color={Colors.success} />
             <Text style={styles.emptyTitle}>All Caught Up</Text>
             <Text style={styles.emptyText}>
-              No new patterns to report right now. Keep completing your commitments
-              and I'll surface any meaningful insights.
+              No new patterns to report right now. I'll keep scanning your health data.
             </Text>
           </View>
         </Card>
@@ -298,6 +360,13 @@ export default function InsightsScreen() {
           </Text>
         </View>
       )}
+
+      {/* Quick Log Modal */}
+      <QuickLogModal
+        visible={showQuickLog}
+        onClose={() => setShowQuickLog(false)}
+        onSubmit={handleQuickLogSubmit}
+      />
     </ScrollView>
   );
 }
@@ -314,6 +383,15 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.lg,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.lg,
+  },
+  headerText: {
+    flex: 1,
+  },
   header: {
     marginBottom: Spacing.xl,
   },
@@ -326,6 +404,9 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.textSecondary,
     marginTop: Spacing.xs,
+  },
+  quickLogButton: {
+    padding: Spacing.xs,
   },
   section: {
     marginBottom: Spacing.xl,
