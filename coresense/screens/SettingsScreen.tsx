@@ -37,7 +37,15 @@ import {
   requestHealthKitPermissions,
   checkPermissions,
 } from "../utils/healthService";
+import { useHealthStore } from "../stores/healthStore";
 import { API_BASE_URL } from "../utils/apiConfig";
+import {
+  coresenseApi,
+  NotificationPreferences,
+} from "../utils/coresenseApi";
+import {
+  registerForPushNotifications,
+} from "../utils/notificationService";
 
 // ============================================================================
 // CONSTANTS (UNCHANGED)
@@ -218,6 +226,21 @@ export default function SettingsScreen() {
   const [healthKitPermissions, setHealthKitPermissions] = useState<boolean | null>(null);
   const [requestingHealthKit, setRequestingHealthKit] = useState(false);
 
+  // Notification preferences state
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>({
+    notifications_enabled: true,
+    task_reminders_enabled: true,
+    coach_nudges_enabled: true,
+    insights_enabled: true,
+    streak_reminders_enabled: true,
+    quiet_hours_enabled: false,
+    quiet_hours_start: "22:00",
+    quiet_hours_end: "08:00",
+    max_daily_notifications: 10,
+  });
+  const [notifPrefsLoading, setNotifPrefsLoading] = useState(true);
+  const [savingNotifPrefs, setSavingNotifPrefs] = useState(false);
+
   // NEW: Toast state
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "error" | "info" }>({
     visible: false,
@@ -244,7 +267,14 @@ export default function SettingsScreen() {
     const loadData = async () => {
       if (user) {
         setIsLoading(true);
+        setNotifPrefsLoading(true);
         await fetchPreferences(user.id);
+        // Load notification preferences
+        const { data: notifData } = await coresenseApi.getNotificationPreferences();
+        if (notifData) {
+          setNotifPrefs(notifData);
+        }
+        setNotifPrefsLoading(false);
         setIsLoading(false);
       }
     };
@@ -330,6 +360,40 @@ export default function SettingsScreen() {
     if (!localPrefs) return;
     setLocalPrefs({ ...localPrefs, [key]: value });
     setHasChanges(true);
+  };
+
+  // Update notification preference (auto-saves to API)
+  const updateNotifPref = async (key: keyof NotificationPreferences, value: any) => {
+    const newPrefs = { ...notifPrefs, [key]: value };
+    setNotifPrefs(newPrefs);
+
+    // Auto-save notification preferences
+    setSavingNotifPrefs(true);
+    try {
+      const { success, error } = await coresenseApi.updateNotificationPreferences({ [key]: value });
+      if (success) {
+        // If enabling push notifications, request permission and register token
+        if (key === "notifications_enabled" && value === true) {
+          const token = await registerForPushNotifications();
+          if (token) {
+            showToast("Notifications enabled", "success");
+          } else {
+            showToast("Enable notifications in device settings", "info");
+          }
+        } else {
+          showToast("Preference saved", "success");
+        }
+      } else {
+        showToast(error || "Failed to save preference", "error");
+        // Revert on error
+        setNotifPrefs(notifPrefs);
+      }
+    } catch (e) {
+      showToast("Failed to save preference", "error");
+      setNotifPrefs(notifPrefs);
+    } finally {
+      setSavingNotifPrefs(false);
+    }
   };
 
   const handleSubmitFeedback = async () => {
@@ -545,28 +609,51 @@ export default function SettingsScreen() {
             <SectionHeader icon="notifications-outline" title="Notifications" />
 
             <ToggleSwitch
-              value={displayPrefs.push_notifications ?? true}
-              onValueChange={(value) => updateLocalPref("push_notifications" as any, value)}
+              value={notifPrefs.notifications_enabled}
+              onValueChange={(value) => updateNotifPref("notifications_enabled", value)}
               label="Push notifications"
-              description="Receive notifications from your coach"
+              description="Receive notifications from Cora and the app"
+              disabled={notifPrefsLoading || savingNotifPrefs}
             />
 
             <View style={styles.divider} />
 
             <ToggleSwitch
-              value={displayPrefs.task_reminders ?? true}
-              onValueChange={(value) => updateLocalPref("task_reminders" as any, value)}
+              value={notifPrefs.task_reminders_enabled}
+              onValueChange={(value) => updateNotifPref("task_reminders_enabled", value)}
               label="Task reminders"
-              description="Get reminded about upcoming tasks"
+              description="Get reminded about upcoming and overdue tasks"
+              disabled={notifPrefsLoading || savingNotifPrefs || !notifPrefs.notifications_enabled}
             />
 
             <View style={styles.divider} />
 
             <ToggleSwitch
-              value={displayPrefs.weekly_reports ?? true}
-              onValueChange={(value) => updateLocalPref("weekly_reports" as any, value)}
-              label="Weekly reports"
-              description="Receive weekly progress summaries"
+              value={notifPrefs.coach_nudges_enabled}
+              onValueChange={(value) => updateNotifPref("coach_nudges_enabled", value)}
+              label="Coach nudges"
+              description="Cora can nudge you about tasks and check-ins"
+              disabled={notifPrefsLoading || savingNotifPrefs || !notifPrefs.notifications_enabled}
+            />
+
+            <View style={styles.divider} />
+
+            <ToggleSwitch
+              value={notifPrefs.insights_enabled}
+              onValueChange={(value) => updateNotifPref("insights_enabled", value)}
+              label="Insight notifications"
+              description="Get notified when new insights are discovered"
+              disabled={notifPrefsLoading || savingNotifPrefs || !notifPrefs.notifications_enabled}
+            />
+
+            <View style={styles.divider} />
+
+            <ToggleSwitch
+              value={notifPrefs.streak_reminders_enabled}
+              onValueChange={(value) => updateNotifPref("streak_reminders_enabled", value)}
+              label="Streak reminders"
+              description="Get reminded when your streak is at risk"
+              disabled={notifPrefsLoading || savingNotifPrefs || !notifPrefs.notifications_enabled}
             />
           </Card>
 
@@ -577,13 +664,14 @@ export default function SettingsScreen() {
             <SectionHeader icon="moon-outline" title="Quiet Hours" iconColor={Colors.neonBlue} />
 
             <ToggleSwitch
-              value={displayPrefs.quiet_hours_enabled}
-              onValueChange={(value) => updateLocalPref("quiet_hours_enabled", value)}
+              value={notifPrefs.quiet_hours_enabled}
+              onValueChange={(value) => updateNotifPref("quiet_hours_enabled", value)}
               label="Enable quiet hours"
-              description="Your coach won't send messages during these times"
+              description="No notifications during these times"
+              disabled={notifPrefsLoading || savingNotifPrefs}
             />
 
-            {displayPrefs.quiet_hours_enabled && (
+            {notifPrefs.quiet_hours_enabled && (
               <Animated.View style={styles.quietHoursExpanded}>
                 <View style={styles.divider} />
 
@@ -593,11 +681,11 @@ export default function SettingsScreen() {
                     <TouchableOpacity
                       style={styles.timePickerButton}
                       onPress={() => setShowStartTimePicker(true)}
-                      accessibilityLabel={`Start time: ${formatTime12Hour(displayPrefs.quiet_hours_start)}`}
+                      accessibilityLabel={`Start time: ${formatTime12Hour(notifPrefs.quiet_hours_start)}`}
                     >
                       <Ionicons name="time-outline" size={18} color={Colors.primary} />
                       <Text style={styles.timePickerValue}>
-                        {formatTime12Hour(displayPrefs.quiet_hours_start)}
+                        {formatTime12Hour(notifPrefs.quiet_hours_start)}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -611,18 +699,18 @@ export default function SettingsScreen() {
                     <TouchableOpacity
                       style={styles.timePickerButton}
                       onPress={() => setShowEndTimePicker(true)}
-                      accessibilityLabel={`End time: ${formatTime12Hour(displayPrefs.quiet_hours_end)}`}
+                      accessibilityLabel={`End time: ${formatTime12Hour(notifPrefs.quiet_hours_end)}`}
                     >
                       <Ionicons name="time-outline" size={18} color={Colors.primary} />
                       <Text style={styles.timePickerValue}>
-                        {formatTime12Hour(displayPrefs.quiet_hours_end)}
+                        {formatTime12Hour(notifPrefs.quiet_hours_end)}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 <Text style={styles.quietHoursNote}>
-                  Messages sent during quiet hours will be delivered when they end
+                  Notifications sent during quiet hours will be delivered when they end
                 </Text>
               </Animated.View>
             )}
@@ -698,81 +786,48 @@ export default function SettingsScreen() {
           {/* ================================================================ */}
           {Platform.OS === "ios" && (
             <Card style={styles.section}>
-              <SectionHeader icon="fitness-outline" title="Health Data" iconColor={Colors.success} />
+              <SectionHeader icon="fitness-outline" title="Health Data" iconColor={Colors.primary} />
 
-              <View style={styles.healthKitContainer}>
-                <View style={styles.healthKitInfo}>
-                  <View style={[
-                    styles.healthKitStatusIcon,
-                    {
-                      backgroundColor: healthKitPermissions === true
-                        ? `${Colors.success}20`
-                        : `${Colors.warning}20`
+              <ToggleSwitch
+                value={healthKitPermissions === true && (displayPrefs.healthkit_enabled !== false)}
+                onValueChange={async (value) => {
+                  if (value) {
+                    // Turning ON - request permissions if not yet granted
+                    if (healthKitPermissions !== true) {
+                      await handleRequestHealthKitPermissions();
                     }
-                  ]}>
-                    <Ionicons
-                      name={
-                        healthKitPermissions === true
-                          ? "checkmark-circle"
-                          : healthKitPermissions === false
-                            ? "warning"
-                            : "help-circle"
-                      }
-                      size={24}
-                      color={
-                        healthKitPermissions === true
-                          ? Colors.success
-                          : healthKitPermissions === false
-                            ? Colors.warning
-                            : Colors.textTertiary
-                      }
-                    />
-                  </View>
-                  <View style={styles.healthKitText}>
-                    <Text style={styles.healthKitTitle}>Apple HealthKit</Text>
-                    <Text style={styles.healthKitDescription}>
-                      {healthKitPermissions === true
-                        ? "Connected - Your health data is being used for personalized coaching"
-                        : healthKitPermissions === false
-                          ? "Not connected - Enable to get health insights"
-                          : "Checking connection status..."}
-                    </Text>
-                  </View>
-                </View>
-
-                {(healthKitPermissions === false || healthKitPermissions === null) && (
-                  <TouchableOpacity
-                    style={styles.healthKitButton}
-                    onPress={handleRequestHealthKitPermissions}
-                    disabled={requestingHealthKit}
-                    activeOpacity={0.7}
-                    accessibilityLabel={healthKitPermissions === null ? "Connect HealthKit" : "Retry HealthKit connection"}
-                    accessibilityRole="button"
-                  >
-                    {requestingHealthKit ? (
-                      <ActivityIndicator size="small" color={Colors.textPrimary} />
-                    ) : (
-                      <Text style={styles.healthKitButtonText}>
-                        {healthKitPermissions === null ? "Connect" : "Retry"}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
+                    updateLocalPref("healthkit_enabled" as any, true);
+                    useHealthStore.getState().setHealthKitEnabled(true);
+                  } else {
+                    // Turning OFF - disable syncing without revoking OS permissions
+                    updateLocalPref("healthkit_enabled" as any, false);
+                    useHealthStore.getState().setHealthKitEnabled(false);
+                    showToast("HealthKit disabled. Your data won't be synced.", "info");
+                  }
+                }}
+                label="HealthKit Integration"
+                description={
+                  healthKitPermissions === true && (displayPrefs.healthkit_enabled !== false)
+                    ? "Connected - toggle off to stop syncing health data"
+                    : healthKitPermissions === true
+                      ? "Connected but disabled - toggle on to resume syncing"
+                      : "Enable to sync sleep, steps & activity data"
+                }
+              />
 
               {healthKitPermissions !== true && (
                 <View style={styles.healthKitBenefits}>
                   <Text style={styles.healthKitBenefitsTitle}>Benefits of connecting:</Text>
                   <View style={styles.benefitItem}>
-                    <Ionicons name="checkmark" size={16} color={Colors.success} />
+                    <Ionicons name="checkmark" size={16} color={Colors.primary} />
                     <Text style={styles.benefitText}>Personalized coaching based on your activity</Text>
                   </View>
                   <View style={styles.benefitItem}>
-                    <Ionicons name="checkmark" size={16} color={Colors.success} />
+                    <Ionicons name="checkmark" size={16} color={Colors.primary} />
                     <Text style={styles.benefitText}>Sleep insights for better rest</Text>
                   </View>
                   <View style={styles.benefitItem}>
-                    <Ionicons name="checkmark" size={16} color={Colors.success} />
+                    <Ionicons name="checkmark" size={16} color={Colors.primary} />
                     <Text style={styles.benefitText}>Progress tracking and trends</Text>
                   </View>
                 </View>
@@ -780,7 +835,7 @@ export default function SettingsScreen() {
 
               <Text style={styles.healthKitNote}>
                 CoreSense uses HealthKit data including steps, sleep, and activity to provide
-                personalized coaching insights. You can disable this in your device settings at any time.
+                personalized coaching insights. You can revoke access in your device's Health settings at any time.
               </Text>
             </Card>
           )}
@@ -850,12 +905,12 @@ export default function SettingsScreen() {
             <View style={styles.timePickerModalContent}>
               <Text style={styles.timePickerModalTitle}>Set Start Time</Text>
               <DateTimePicker
-                value={timeStringToDate(displayPrefs.quiet_hours_start)}
+                value={timeStringToDate(notifPrefs.quiet_hours_start)}
                 mode="time"
                 display="spinner"
                 onChange={(event, date) => {
                   if (date) {
-                    updateLocalPref("quiet_hours_start", dateToTimeString(date));
+                    updateNotifPref("quiet_hours_start", dateToTimeString(date));
                   }
                 }}
                 textColor={Colors.textPrimary}
@@ -881,12 +936,12 @@ export default function SettingsScreen() {
             <View style={styles.timePickerModalContent}>
               <Text style={styles.timePickerModalTitle}>Set End Time</Text>
               <DateTimePicker
-                value={timeStringToDate(displayPrefs.quiet_hours_end)}
+                value={timeStringToDate(notifPrefs.quiet_hours_end)}
                 mode="time"
                 display="spinner"
                 onChange={(event, date) => {
                   if (date) {
-                    updateLocalPref("quiet_hours_end", dateToTimeString(date));
+                    updateNotifPref("quiet_hours_end", dateToTimeString(date));
                   }
                 }}
                 textColor={Colors.textPrimary}

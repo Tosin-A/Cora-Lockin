@@ -4,8 +4,9 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { coresenseApi } from '../utils/coresenseApi';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { coresenseApi, HealthInsightsData } from '../utils/coresenseApi';
 import { InsightsScreenData, InsightData } from '../types/insights';
 
 export interface ChatInsight {
@@ -46,12 +47,14 @@ interface InsightsStore {
 
   // New commitment insights state
   commitmentInsights: InsightsScreenData | null;
+  healthInsights: HealthInsightsData | null;
   loading: boolean;
   error: string | null;
 
   // Actions
   fetchInsights: () => Promise<void>;
   fetchCommitmentInsights: () => Promise<void>;
+  fetchHealthInsights: () => Promise<void>;
   generateInsightFromChat: (chatMessage: string, category: string) => Promise<void>;
   dismissInsight: (insightId: string) => Promise<void>;
   saveInsight: (insightId: string) => Promise<void>;
@@ -70,6 +73,7 @@ export const useInsightsStore = create<InsightsStore>()(
       weeklyInsights: [],
       monthlyInsights: [],
       commitmentInsights: null,
+      healthInsights: null,
       loading: false,
       error: null,
 
@@ -138,6 +142,26 @@ export const useInsightsStore = create<InsightsStore>()(
         } catch (error: any) {
           console.error('Failed to fetch commitment insights:', error);
           set({ error: error.message || 'Failed to load insights' });
+        } finally {
+          set({ loading: false });
+        }
+      },
+
+      fetchHealthInsights: async () => {
+        set({ loading: true, error: null });
+
+        try {
+          const { data, error } = await coresenseApi.getHealthInsights();
+
+          if (error) {
+            console.warn('Failed to fetch health insights:', error);
+            set({ error: error });
+          } else if (data) {
+            set({ healthInsights: data });
+          }
+        } catch (error: any) {
+          console.error('Failed to fetch health insights:', error);
+          set({ error: error.message || 'Failed to load health insights' });
         } finally {
           set({ loading: false });
         }
@@ -278,6 +302,7 @@ export const useInsightsStore = create<InsightsStore>()(
     }),
     {
       name: 'insights-store',
+      storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         insights: state.insights.filter((i) => !i.dismissed).slice(-20), // Keep last 20 non-dismissed insights
         weeklyInsights: state.weeklyInsights.slice(-4), // Keep last 4 weeks

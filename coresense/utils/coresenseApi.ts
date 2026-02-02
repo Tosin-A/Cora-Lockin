@@ -974,6 +974,219 @@ export async function recordInsightReaction(
   return { success: data?.success || false, error };
 }
 
+// ============================================================================
+// HEALTH DATA SYNC
+// ============================================================================
+
+export interface HealthSyncPayload {
+  metrics: Array<{
+    metric_type: string;
+    value: number;
+    unit: string;
+    recorded_at: string;
+    source?: string;
+    metadata?: Record<string, any>;
+  }>;
+}
+
+export async function syncHealthData(
+  payload: HealthSyncPayload,
+): Promise<{ data: { success: boolean; inserted: number } | null; error: string | null }> {
+  return apiRequest("/api/v1/health/sync", { method: "POST", body: payload });
+}
+
+export interface HealthInsightsData {
+  coach_summary: string | null;
+  patterns: Array<{
+    id: string;
+    type: string;
+    title: string;
+    coach_commentary: string;
+    evidence: {
+      type: string;
+      labels: string[];
+      values: number[];
+      highlight_index: number | null;
+      trend_direction: string;
+      trend_value: string | null;
+    };
+    action_text: string | null;
+    is_new: boolean;
+    action_steps: string[];
+  }>;
+  has_enough_data: boolean;
+  days_until_enough_data?: number;
+}
+
+export async function getHealthInsights(): Promise<{
+  data: HealthInsightsData | null;
+  error: string | null;
+}> {
+  return apiRequest<HealthInsightsData>("/api/v1/insights/health-patterns");
+}
+
+// ============================================================================
+// TODOS API (Shared To-Do List)
+// ============================================================================
+
+export interface Todo {
+  id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  created_by: 'user' | 'coach';
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  due_date?: string;
+  due_time?: string;
+  reminder_enabled: boolean;
+  reminder_minutes_before: number;
+  coach_reasoning?: string;
+  linked_insight_id?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTodoInput {
+  title: string;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  due_date?: string;
+  due_time?: string;
+  reminder_enabled?: boolean;
+  reminder_minutes_before?: number;
+}
+
+export interface CreateCoachTodoInput extends CreateTodoInput {
+  coach_reasoning?: string;
+  linked_insight_id?: string;
+}
+
+export async function getTodos(): Promise<{
+  data: Todo[] | null;
+  error: string | null;
+}> {
+  return apiRequest<Todo[]>('/api/v1/todos');
+}
+
+export async function createTodo(input: CreateTodoInput): Promise<{
+  data: Todo | null;
+  error: string | null;
+}> {
+  return apiRequest<Todo>('/api/v1/todos', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export async function createCoachTodo(input: CreateCoachTodoInput): Promise<{
+  data: Todo | null;
+  error: string | null;
+}> {
+  return apiRequest<Todo>('/api/v1/todos/coach', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export async function updateTodoStatus(
+  todoId: string,
+  status: Todo['status'],
+): Promise<{ data: Todo | null; error: string | null }> {
+  return apiRequest<Todo>(`/api/v1/todos/${todoId}/status`, {
+    method: 'PUT',
+    body: { status },
+  });
+}
+
+export async function updateTodo(
+  todoId: string,
+  updates: Partial<CreateTodoInput>,
+): Promise<{ data: Todo | null; error: string | null }> {
+  return apiRequest<Todo>(`/api/v1/todos/${todoId}`, {
+    method: 'PUT',
+    body: updates,
+  });
+}
+
+export async function deleteTodo(todoId: string): Promise<{
+  success: boolean;
+  error: string | null;
+}> {
+  const { data, error } = await apiRequest<{ success: boolean; message: string }>(
+    `/api/v1/todos/${todoId}`,
+    { method: 'DELETE' },
+  );
+  return { success: data?.success || false, error };
+}
+
+// ============================================================================
+// NOTIFICATIONS API
+// ============================================================================
+
+export async function registerDeviceToken(
+  pushToken: string,
+  platform: string,
+): Promise<{ success: boolean; error: string | null }> {
+  const { data, error } = await apiRequest<{ success: boolean }>(
+    "/api/v1/notifications/register-device",
+    {
+      method: "POST",
+      body: { push_token: pushToken, platform },
+    },
+  );
+  return { success: data?.success || false, error };
+}
+
+export async function unregisterDeviceToken(
+  token: string,
+): Promise<{ success: boolean; error: string | null }> {
+  const { data, error } = await apiRequest<{ success: boolean }>(
+    `/api/v1/notifications/devices/token?token=${encodeURIComponent(token)}`,
+    { method: 'DELETE' },
+  );
+  return { success: data?.success || false, error };
+}
+
+export interface NotificationPreferences {
+  notifications_enabled: boolean;
+  task_reminders_enabled: boolean;
+  coach_nudges_enabled: boolean;
+  insights_enabled: boolean;
+  streak_reminders_enabled: boolean;
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: string;
+  quiet_hours_end: string;
+  max_daily_notifications: number;
+}
+
+export async function getNotificationPreferences(): Promise<{
+  data: NotificationPreferences | null;
+  error: string | null;
+}> {
+  const result = await apiRequest<{ preferences: NotificationPreferences }>(
+    '/api/v1/notifications/preferences',
+  );
+  return {
+    data: result.data?.preferences || null,
+    error: result.error,
+  };
+}
+
+export async function updateNotificationPreferences(
+  preferences: Partial<NotificationPreferences>,
+): Promise<{ success: boolean; error: string | null }> {
+  const { data, error } = await apiRequest<{ success: boolean }>(
+    '/api/v1/notifications/preferences',
+    {
+      method: 'PUT',
+      body: preferences,
+    },
+  );
+  return { success: data?.success || false, error };
+}
+
 // Export all functions
 export const coresenseApi = {
   // Home
@@ -984,6 +1197,7 @@ export const coresenseApi = {
   saveInsight,
   dismissInsight,
   getCommitmentInsights,
+  getHealthInsights,
   recordInsightReaction,
 
   // Engagement
@@ -1011,6 +1225,7 @@ export const coresenseApi = {
 
   // Health
   getHealthSummary,
+  syncHealthData,
 
   // Wellness
   getWellnessScore,
@@ -1026,6 +1241,20 @@ export const coresenseApi = {
   // Message Limits
   getMessageUsage,
   upgradeToPro,
+
+  // Todos (Shared To-Do List)
+  getTodos,
+  createTodo,
+  createCoachTodo,
+  updateTodoStatus,
+  updateTodo,
+  deleteTodo,
+
+  // Notifications
+  registerDeviceToken,
+  unregisterDeviceToken,
+  getNotificationPreferences,
+  updateNotificationPreferences,
 };
 
 export default coresenseApi;

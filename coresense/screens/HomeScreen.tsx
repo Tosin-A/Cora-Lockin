@@ -13,46 +13,59 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Linking,
-  Alert,
   Animated,
   RefreshControl,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
 import {
-  StatusBanner,
-  LastCoachMessageCard,
   TodayInsightCard,
   Card,
 } from '../components';
 import { useAuthStore } from '../stores/authStore';
 import { useUserStore } from '../stores/userStore';
 import { useHealthStore } from '../stores/healthStore';
+import { useTodosStore } from '../stores/todosStore';
+import { useInsightsStore } from '../stores/insightsStore';
 import { coresenseApi, HomeData } from '../utils/coresenseApi';
-
-
-// Key for tracking first message sent
-const FIRST_MESSAGE_SENT_KEY = '@coresense_first_message_sent';
+import type { Todo } from '../types/todos';
+import { InsightType } from '../types/insights';
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
   const { profile, fetchProfile } = useUserStore();
-  const { initialize: initializeHealth } = useHealthStore();
-  
+  const { initialize: initializeHealth, syncToSupabase } = useHealthStore();
+  const { fetchTodos, updateTodoStatus, getPendingTodos, createTodo } = useTodosStore();
+  const { healthInsights, fetchHealthInsights } = useInsightsStore();
+
   // Real data state
   const [homeData, setHomeData] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
+  // Streak modal state
+  const [streakModalVisible, setStreakModalVisible] = useState(false);
+
+  // Add task modal state
+  const [addTaskModalVisible, setAddTaskModalVisible] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [streakData, setStreakData] = useState<{
+    currentStreak: number;
+    longestStreak: number;
+    lastActivityDate: string | null;
+  }>({ currentStreak: 0, longestStreak: 0, lastActivityDate: null });
+
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -100,11 +113,43 @@ export default function HomeScreen() {
     }
   }, []);
 
+  // Record daily streak
+  const recordDailyStreak = useCallback(async () => {
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const result = await coresenseApi.recordStreak(timezone);
+      if (result.data) {
+        setStreakData({
+          currentStreak: result.data.currentStreak,
+          longestStreak: result.data.longestStreak,
+          lastActivityDate: result.data.lastActivityDate || null,
+        });
+      }
+    } catch (e) {
+      console.log('[HomeScreen] Failed to record streak:', e);
+    }
+  }, []);
+
   // Fetch on mount and when screen focuses
   useFocusEffect(
     useCallback(() => {
-      fetchData();
-    }, [fetchData])
+      // Sync HealthKit data then fetch home data
+      const syncAndFetch = async () => {
+        if (user) {
+          try {
+            await syncToSupabase(user.id);
+          } catch (e) {
+            console.log('[HomeScreen] HealthKit sync on focus failed:', e);
+          }
+          // Record daily streak (will only increment once per day)
+          recordDailyStreak();
+        }
+        fetchData();
+        fetchTodos();
+        fetchHealthInsights(); // Fetch insights for Today's Insight card
+      };
+      syncAndFetch();
+    }, [fetchData, fetchTodos, fetchHealthInsights, syncToSupabase, user, recordDailyStreak])
   );
 
   useEffect(() => {
@@ -128,10 +173,18 @@ export default function HomeScreen() {
     ]).start();
   }, [user]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    // Sync HealthKit data to backend first, then fetch updated home data
+    if (user) {
+      try {
+        await syncToSupabase(user.id);
+      } catch (e) {
+        console.log('[HomeScreen] HealthKit sync failed:', e);
+      }
+    }
     fetchData(false);
-  }, [fetchData]);
+  }, [fetchData, syncToSupabase, user]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -145,6 +198,94 @@ export default function HomeScreen() {
   const handleGoToCoachChat = () => {
     navigation.navigate('Coach' as never);
   };
+
+  // Handle adding a new task
+  const handleAddTask = async () => {
+    if (!newTaskTitle.trim()) return;
+
+    await createTodo({
+      title: newTaskTitle.trim(),
+      priority: 'medium',
+    });
+
+    setNewTaskTitle('');
+    setAddTaskModalVisible(false);
+    fetchTodos(); // Refresh the list
+  };
+
+  // Derive today's insight from health insights if backend doesn't provide one
+  const getTodayInsight = () => {
+    // Use backend-provided insight if available
+    if (homeData?.todayInsight) {
+      return homeData.todayInsight;
+    }
+
+    // Fall back to health insights from the store
+    if (!healthInsights?.has_enough_data || !healthInsights?.patterns?.length) {
+      return null;
+    }
+
+    const patterns = healthInsights.patterns;
+
+    // Dynamic selection: rotate through patterns based on day + hour
+    // This ensures variety throughout the day and across days
+    const now = new Date();
+    const dayOfYear = Math.floor(
+      (now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const hourBlock = Math.floor(now.getHours() / 6); // Changes every 6 hours (4x per day)
+
+    // Prioritize new insights first, then rotate through all
+    const newPatterns = patterns.filter(p => p.is_new);
+    const seenPatterns = patterns.filter(p => !p.is_new);
+
+    let selectedPattern;
+
+    if (newPatterns.length > 0) {
+      // Show new patterns first, rotating through them
+      const newIndex = (dayOfYear + hourBlock) % newPatterns.length;
+      selectedPattern = newPatterns[newIndex];
+    } else if (seenPatterns.length > 0) {
+      // Rotate through seen patterns
+      const seenIndex = (dayOfYear + hourBlock) % seenPatterns.length;
+      selectedPattern = seenPatterns[seenIndex];
+    } else {
+      selectedPattern = patterns[0];
+    }
+
+    if (!selectedPattern) return null;
+
+    // Map insight type to category
+    const typeToCategory: Record<string, 'sleep' | 'health' | 'productivity' | 'mood'> = {
+      [InsightType.BEHAVIORAL]: 'health',
+      [InsightType.PROGRESS]: 'productivity',
+      [InsightType.RISK]: 'health',
+    };
+
+    // Determine category based on pattern evidence type or insight type
+    let category: 'sleep' | 'health' | 'productivity' | 'mood' = 'health';
+    const evidenceType = selectedPattern.evidence?.type?.toLowerCase() || '';
+
+    if (evidenceType.includes('sleep')) {
+      category = 'sleep';
+    } else if (evidenceType.includes('activity') || evidenceType.includes('steps')) {
+      category = 'health';
+    } else if (evidenceType.includes('energy') || evidenceType.includes('productivity')) {
+      category = 'productivity';
+    } else {
+      category = typeToCategory[selectedPattern.type as string] || 'health';
+    }
+
+    return {
+      id: selectedPattern.id,
+      title: selectedPattern.title,
+      body: selectedPattern.coach_commentary,
+      category,
+      actionable: !!selectedPattern.action_steps?.length,
+    };
+  };
+
+  const todayInsight = getTodayInsight();
 
 
 
@@ -193,7 +334,7 @@ export default function HomeScreen() {
         />
       }
     >
-      {/* Greeting Section - Fixed sun icon positioning */}
+      {/* Greeting Section */}
       <Animated.View
         style={[
           styles.greetingSection,
@@ -212,28 +353,21 @@ export default function HomeScreen() {
               {firstName}
             </Text>
           </View>
-          <View style={styles.streakContainer}>
-            <Text style={styles.streakNumber}>{homeData?.streak || 0}</Text>
-            <Text style={styles.streakLabel}>day streak</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.streakContainer}
+            onPress={() => setStreakModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.streakNumber}>
+              {streakData.currentStreak || homeData?.streak || 0}
+            </Text>
+            <Text style={styles.streakLabel}>Streaks</Text>
+            <Ionicons name="chevron-forward" size={12} color={Colors.textTertiary} style={styles.streakChevron} />
+          </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* Open Messages Button - Primary CTA - NOW AT TOP */}
-      <TouchableOpacity
-        style={styles.messagesButton}
-        onPress={handleGoToCoachChat}
-        activeOpacity={0.9}
-      >
-        <View style={styles.messagesButtonContent}>
-          <View style={styles.messagesIconContainer}>
-            <Ionicons name="chatbubble" size={20} color="white" />
-          </View>
-          <Text style={styles.messagesButtonText}>Go to Coach Chat</Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Recent Coach Messages - Make this section more enticing */}
+      {/* From Your Coach - Primary entry point to chat */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>FROM YOUR COACH</Text>
         {homeData?.lastCoachMessage ? (
@@ -279,13 +413,13 @@ export default function HomeScreen() {
       {/* Today's Insight Card - Real Data */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>TODAY'S INSIGHT</Text>
-        {homeData?.todayInsight ? (
+        {todayInsight ? (
           <TodayInsightCard
             insight={{
-              title: homeData.todayInsight.title,
-              body: homeData.todayInsight.body,
-              category: homeData.todayInsight.category as 'sleep' | 'mood' | 'productivity' | 'health',
-              actionable: homeData.todayInsight.actionable,
+              title: todayInsight.title,
+              body: todayInsight.body,
+              category: todayInsight.category as 'sleep' | 'mood' | 'productivity' | 'health',
+              actionable: todayInsight.actionable,
             }}
             onExpand={() => {
               navigation.navigate('Insights' as never);
@@ -302,6 +436,77 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {/* Tasks Section - Always visible */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionLabel}>YOUR TASKS</Text>
+          {getPendingTodos().length > 0 && (
+            <TouchableOpacity onPress={() => navigation.navigate('Tasks' as never)}>
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {getPendingTodos().length > 0 ? (
+          // Show pending tasks
+          getPendingTodos().slice(0, 3).map((todo: Todo) => (
+            <TouchableOpacity
+              key={todo.id}
+              style={styles.taskCard}
+              onPress={() => {
+                updateTodoStatus(todo.id, 'completed');
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.taskCheckbox}>
+                <Ionicons name="ellipse-outline" size={22} color={Colors.textTertiary} />
+              </View>
+              <View style={styles.taskContent}>
+                <View style={styles.taskTitleRow}>
+                  <Text style={styles.taskTitle}>{todo.title}</Text>
+                  {todo.created_by === 'coach' && (
+                    <View style={styles.coachBadge}>
+                      <Text style={styles.coachBadgeText}>Coach</Text>
+                    </View>
+                  )}
+                </View>
+                {todo.due_date && (
+                  <Text style={styles.taskDueDate}>
+                    Due: {new Date(todo.due_date).toLocaleDateString()}
+                  </Text>
+                )}
+                {todo.created_by === 'coach' && todo.coach_reasoning && (
+                  <Text style={styles.taskReasoning} numberOfLines={2}>
+                    {todo.coach_reasoning}
+                  </Text>
+                )}
+              </View>
+              <View style={[
+                styles.priorityDot,
+                todo.priority === 'high' && styles.priorityHigh,
+                todo.priority === 'urgent' && styles.priorityUrgent,
+              ]} />
+            </TouchableOpacity>
+          ))
+        ) : (
+          // Empty state - encourage adding tasks
+          <Card style={styles.emptyTasksCard}>
+            <View style={styles.emptyTasksContent}>
+              <Ionicons name="checkbox-outline" size={32} color={Colors.textTertiary} />
+              <Text style={styles.emptyTasksText}>No tasks yet</Text>
+              <Text style={styles.emptyTasksSubtext}>Add tasks to stay on track with your goals</Text>
+              <TouchableOpacity
+                style={styles.addFirstTaskButton}
+                onPress={() => setAddTaskModalVisible(true)}
+              >
+                <Ionicons name="add" size={20} color={Colors.textPrimary} />
+                <Text style={styles.addFirstTaskText}>Add Your First Task</Text>
+              </TouchableOpacity>
+            </View>
+          </Card>
+        )}
+      </View>
+
       {/* Error Message */}
       {error && (
         <View style={styles.errorContainer}>
@@ -312,6 +517,124 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Add Task Modal */}
+      <Modal
+        visible={addTaskModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddTaskModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.addTaskModalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.addTaskModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setAddTaskModalVisible(false)}
+          />
+          <View style={styles.addTaskModalContent}>
+            <View style={styles.addTaskModalHeader}>
+              <Text style={styles.addTaskModalTitle}>Add New Task</Text>
+              <TouchableOpacity onPress={() => setAddTaskModalVisible(false)}>
+                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={styles.addTaskInput}
+              placeholder="What do you need to do?"
+              placeholderTextColor={Colors.textTertiary}
+              value={newTaskTitle}
+              onChangeText={setNewTaskTitle}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleAddTask}
+            />
+
+            <View style={styles.addTaskModalButtons}>
+              <TouchableOpacity
+                style={styles.addTaskCancelButton}
+                onPress={() => {
+                  setNewTaskTitle('');
+                  setAddTaskModalVisible(false);
+                }}
+              >
+                <Text style={styles.addTaskCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.addTaskSubmitButton,
+                  !newTaskTitle.trim() && styles.addTaskSubmitButtonDisabled,
+                ]}
+                onPress={handleAddTask}
+                disabled={!newTaskTitle.trim()}
+              >
+                <Ionicons name="add" size={20} color={Colors.textPrimary} />
+                <Text style={styles.addTaskSubmitText}>Add Task</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Streak Modal */}
+      <Modal
+        visible={streakModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStreakModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setStreakModalVisible(false)}
+        >
+          <View style={styles.streakModalContent}>
+            <View style={styles.streakModalHeader}>
+              <Ionicons name="flame" size={32} color={Colors.primary} />
+              <Text style={styles.streakModalTitle}>Your Streak</Text>
+            </View>
+
+            <View style={styles.streakStatsRow}>
+              <View style={styles.streakStatItem}>
+                <Text style={styles.streakStatNumber}>
+                  {streakData.currentStreak || homeData?.streak || 0}
+                </Text>
+                <Text style={styles.streakStatLabel}>Current</Text>
+              </View>
+              <View style={styles.streakStatDivider} />
+              <View style={styles.streakStatItem}>
+                <Text style={styles.streakStatNumber}>
+                  {streakData.longestStreak || 0}
+                </Text>
+                <Text style={styles.streakStatLabel}>Longest</Text>
+              </View>
+            </View>
+
+            {streakData.lastActivityDate && (
+              <View style={styles.streakLastActivity}>
+                <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
+                <Text style={styles.streakLastActivityText}>
+                  Last check-in: {new Date(streakData.lastActivityDate).toLocaleDateString()}
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.streakModalDescription}>
+              Open the app daily to maintain your streak. Your streak resets if you miss a day.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.streakModalButton}
+              onPress={() => setStreakModalVisible(false)}
+            >
+              <Text style={styles.streakModalButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
   );
 }
@@ -362,6 +685,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  streakChevron: {
+    marginTop: 4,
+  },
   section: {
     marginBottom: Spacing.xl,
   },
@@ -369,43 +695,6 @@ const styles = StyleSheet.create({
     ...Typography.label,
     color: Colors.textTertiary,
     marginBottom: Spacing.md,
-  },
-  messagesButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: BorderRadius.large,
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.xl,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    shadowColor: Colors.primary,
-    shadowOffset: {
-      width: 0,
-      height: 0,
-    },
-    shadowOpacity: 0.8,
-    shadowRadius: 12,
-    elevation: 8,
-    marginBottom: Spacing.xl,
-  },
-  messagesButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-  },
-  messagesIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  messagesButtonText: {
-    ...Typography.h2,
-    color: '#1C1C1E',
-    fontWeight: '700',
-    fontSize: 18,
   },
   emptyCard: {
     padding: Spacing.xl,
@@ -520,69 +809,265 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-  // Quick actions styles
-  quickActionsRow: {
+  // Tasks section styles
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  quickActionButton: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.medium,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    marginBottom: Spacing.md,
   },
-  quickActionText: {
+  viewAllText: {
     ...Typography.bodySmall,
+    color: Colors.primary,
     fontWeight: '600',
-    marginTop: Spacing.xs,
   },
-  // Coach status styles
-  coachStatusSection: {
+  taskCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     backgroundColor: Colors.surface,
+    padding: Spacing.md,
     borderRadius: BorderRadius.medium,
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
+    marginBottom: Spacing.sm,
   },
-  coachStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  coachAvatarStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  coachStatusIndicator: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  taskCheckbox: {
     marginRight: Spacing.md,
+    marginTop: 2,
   },
-  coachStatusInfo: {
+  taskContent: {
     flex: 1,
   },
-  coachStatusName: {
+  taskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  taskTitle: {
+    ...Typography.body,
+    color: Colors.textPrimary,
+    fontWeight: '500',
+    flex: 1,
+  },
+  coachBadge: {
+    backgroundColor: Colors.primary + '20',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  coachBadgeText: {
+    ...Typography.caption,
+    color: Colors.primary,
+    fontWeight: '600',
+    fontSize: 10,
+  },
+  taskDueDate: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
+    marginTop: 4,
+  },
+  taskReasoning: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  priorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.textTertiary,
+    marginLeft: Spacing.sm,
+    marginTop: 6,
+  },
+  priorityHigh: {
+    backgroundColor: '#FFB800',
+  },
+  priorityUrgent: {
+    backgroundColor: '#FF4444',
+  },
+  // Empty tasks state
+  emptyTasksCard: {
+    padding: Spacing.lg,
+  },
+  emptyTasksContent: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  emptyTasksText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  emptyTasksSubtext: {
+    ...Typography.bodySmall,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+  },
+  addFirstTaskButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.medium,
+    marginTop: Spacing.md,
+    gap: Spacing.xs,
+  },
+  addFirstTaskText: {
     ...Typography.body,
     color: Colors.textPrimary,
     fontWeight: '600',
   },
-  coachStatusText: {
+  // Add Task Modal Styles
+  addTaskModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  addTaskModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  addTaskModalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: BorderRadius.large,
+    borderTopRightRadius: BorderRadius.large,
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xl,
+  },
+  addTaskModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  addTaskModalTitle: {
+    ...Typography.h2,
+    color: Colors.textPrimary,
+  },
+  addTaskInput: {
+    ...Typography.body,
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.medium,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
+    padding: Spacing.md,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.lg,
+  },
+  addTaskModalButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  addTaskCancelButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.medium,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
+    alignItems: 'center',
+  },
+  addTaskCancelText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  addTaskSubmitButton: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.medium,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  addTaskSubmitButtonDisabled: {
+    backgroundColor: Colors.surfaceMedium,
+  },
+  addTaskSubmitText: {
+    ...Typography.body,
+    color: Colors.textPrimary,
+    fontWeight: '600',
+  },
+  // Streak Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  streakModalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.large,
+    padding: Spacing.xl,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+  },
+  streakModalHeader: {
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  streakModalTitle: {
+    ...Typography.h2,
+    color: Colors.textPrimary,
+    marginTop: Spacing.sm,
+  },
+  streakStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+    width: '100%',
+  },
+  streakStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  streakStatNumber: {
+    ...Typography.h1,
+    color: Colors.primary,
+    fontSize: 40,
+    fontWeight: '800',
+  },
+  streakStatLabel: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
+  streakStatDivider: {
+    width: 1,
+    height: 50,
+    backgroundColor: Colors.glassBorder,
+    marginHorizontal: Spacing.md,
+  },
+  streakLastActivity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  streakLastActivityText: {
     ...Typography.bodySmall,
     color: Colors.textSecondary,
   },
-  lastInteraction: {
-    alignItems: 'flex-end',
-  },
-  lastInteractionText: {
+  streakModalDescription: {
     ...Typography.bodySmall,
     color: Colors.textTertiary,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+  streakModalButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.medium,
+  },
+  streakModalButtonText: {
+    ...Typography.body,
+    color: 'white',
+    fontWeight: '600',
   },
 });

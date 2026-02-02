@@ -107,6 +107,8 @@ export default function InsightsScreen() {
         insightId: insight.id,
         title: insight.title,
         commentary: insight.coach_commentary,
+        patternType: insight.evidence?.type,
+        actionSteps: insight.action_steps,
       },
     });
   };
@@ -329,6 +331,7 @@ export default function InsightsScreen() {
                 trend_value: pattern.evidence.trend_value,
               }}
               actionText={pattern.action_text}
+              actionSteps={pattern.action_steps}
               isNew={pattern.is_new}
               onAskCoach={() => handleAskCoach(pattern as InsightData)}
               onHelpful={() => handleHelpful(pattern.id)}
