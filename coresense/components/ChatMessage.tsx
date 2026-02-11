@@ -8,6 +8,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
 import { Colors, Typography, BorderRadius, Spacing } from "../constants/theme";
+import { useTheme } from "../contexts/ThemeContext";
 import type { ChatMessage } from "../stores/chatStore";
 
 interface ChatMessageProps {
@@ -27,6 +28,7 @@ export default function ChatMessageComponent({
   coachAvatar,
   userAvatar,
 }: ChatMessageProps) {
+  const { colors } = useTheme();
   const isUser = message.sender === "user";
 
   const formatTime = (timestamp: Date): string => {
@@ -42,8 +44,8 @@ export default function ChatMessageComponent({
     >
       {showAvatar && isLast && !isUser && (
         <View style={styles.avatarContainer}>
-          <View style={styles.coachAvatar}>
-            <Ionicons name="person" size={16} color={Colors.textPrimary} />
+          <View style={[styles.coachAvatar, { backgroundColor: colors.accent }]}>
+            <Ionicons name="person" size={16} color="#FFFFFF" />
           </View>
         </View>
       )}
@@ -51,7 +53,7 @@ export default function ChatMessageComponent({
       <View
         style={[
           styles.messageBubble,
-          isUser ? styles.userBubble : styles.coachBubble,
+          isUser ? [styles.userBubble, { backgroundColor: colors.primary }] : [styles.coachBubble, { backgroundColor: colors.surfaceLight }],
           isGrouped && !isLast && styles.groupedMessage,
           {
             borderRadius:
@@ -64,20 +66,20 @@ export default function ChatMessageComponent({
         <Text
           style={[
             styles.messageText,
-            isUser ? styles.userText : styles.coachText,
+            isUser ? [styles.userText, { color: '#FFFFFF' }] : [styles.coachText, { color: colors.textPrimary }],
           ]}
         >
           {message.isStreaming && message.streamingText
             ? message.streamingText
             : message.text}
-          {message.isStreaming && <Text style={styles.typingIndicator}>▌</Text>}
+          {message.isStreaming && <Text style={[styles.typingIndicator, { color: colors.textSecondary }]}>▌</Text>}
         </Text>
       </View>
 
       {showAvatar && isLast && isUser && (
         <View style={styles.avatarContainer}>
-          <View style={styles.userAvatar}>
-            <Ionicons name="person" size={16} color={Colors.textPrimary} />
+          <View style={[styles.userAvatar, { backgroundColor: colors.primary }]}>
+            <Ionicons name="person" size={16} color="#FFFFFF" />
           </View>
         </View>
       )}

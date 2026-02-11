@@ -1,5 +1,6 @@
 /**
  * PurpleButton Component
+ * Supports both light and dark themes
  */
 
 import React from 'react';
@@ -9,9 +10,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   ViewStyle,
-  TextStyle,
 } from 'react-native';
-import { Colors, Spacing, BorderRadius, Typography } from '../constants/theme';
+import { Spacing, BorderRadius, Typography } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface PurpleButtonProps {
   title: string;
@@ -30,10 +31,35 @@ export const PurpleButton: React.FC<PurpleButtonProps> = ({
   loading = false,
   style,
 }) => {
+  const { colors } = useTheme();
+
+  const dynamicStyles = {
+    primary: {
+      backgroundColor: colors.primary,
+    },
+    secondary: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    primaryText: {
+      color: '#FFFFFF',
+    },
+    secondaryText: {
+      color: colors.primary,
+    },
+    textOnly: {
+      color: colors.primary,
+    },
+    disabledText: {
+      color: colors.textTertiary,
+    },
+  };
+
   const buttonStyle = [
     styles.button,
-    variant === 'primary' && styles.primary,
-    variant === 'secondary' && styles.secondary,
+    variant === 'primary' && dynamicStyles.primary,
+    variant === 'secondary' && dynamicStyles.secondary,
     variant === 'text' && styles.text,
     disabled && styles.disabled,
     style,
@@ -41,10 +67,10 @@ export const PurpleButton: React.FC<PurpleButtonProps> = ({
 
   const textStyle = [
     styles.buttonText,
-    variant === 'primary' && styles.primaryText,
-    variant === 'secondary' && styles.secondaryText,
-    variant === 'text' && styles.textOnly,
-    disabled && styles.disabledText,
+    variant === 'primary' && dynamicStyles.primaryText,
+    variant === 'secondary' && dynamicStyles.secondaryText,
+    variant === 'text' && dynamicStyles.textOnly,
+    disabled && dynamicStyles.disabledText,
   ];
 
   return (
@@ -55,7 +81,7 @@ export const PurpleButton: React.FC<PurpleButtonProps> = ({
       activeOpacity={0.7}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? Colors.textPrimary : Colors.primary} />
+        <ActivityIndicator color={variant === 'primary' ? '#FFFFFF' : colors.primary} />
       ) : (
         <Text style={textStyle}>{title}</Text>
       )}
@@ -73,14 +99,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 120,
   },
-  primary: {
-    backgroundColor: Colors.primary,
-  },
-  secondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
   text: {
     backgroundColor: 'transparent',
   },
@@ -90,18 +108,6 @@ const styles = StyleSheet.create({
   buttonText: {
     ...Typography.body,
     fontWeight: '600',
-  },
-  primaryText: {
-    color: Colors.textPrimary,
-  },
-  secondaryText: {
-    color: Colors.primary,
-  },
-  textOnly: {
-    color: Colors.primary,
-  },
-  disabledText: {
-    color: Colors.textTertiary,
   },
 });
 

@@ -147,15 +147,50 @@ export interface Streaks {
 // Helper to get auth token
 async function getAuthToken(): Promise<string | null> {
   console.log("[coresenseApi] 🔐 Getting auth session...");
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token || null;
-  console.log(
-    "[coresenseApi] 🔑 Auth token status:",
-    token ? "present" : "missing",
-  );
-  return token;
+  try {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+
+    if (error) {
+      console.log("[coresenseApi] ❌ Error getting session:", error.message);
+      return null;
+    }
+
+    if (!session) {
+      console.log("[coresenseApi] ⚠️ No session found - user not logged in");
+      return null;
+    }
+
+    const token = session.access_token;
+    console.log(
+      "[coresenseApi] 🔑 Auth token status:",
+      token ? `present (length: ${token.length})` : "missing from session",
+    );
+
+    // Check if token is expired
+    if (session.expires_at) {
+      const expiresAt = new Date(session.expires_at * 1000);
+      const now = new Date();
+      if (expiresAt < now) {
+        console.log("[coresenseApi] ⚠️ Token expired at:", expiresAt.toISOString());
+        // Try to refresh the session
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !refreshData.session) {
+          console.log("[coresenseApi] ❌ Failed to refresh session:", refreshError?.message);
+          return null;
+        }
+        console.log("[coresenseApi] ✅ Session refreshed successfully");
+        return refreshData.session.access_token;
+      }
+    }
+
+    return token || null;
+  } catch (err: any) {
+    console.log("[coresenseApi] ❌ Exception getting auth token:", err.message);
+    return null;
+  }
 }
 
 /**
@@ -237,10 +272,12 @@ async function apiRequest<T>(
   try {
     const token = await getAuthToken();
 
-    if (!token) {
-      console.log(`[coresenseApi] ❌ [${requestId}] No auth token available`);
+    if (!token || token.trim() === '') {
+      console.log(`[coresenseApi] ❌ [${requestId}] No auth token available (token: ${token === null ? 'null' : token === undefined ? 'undefined' : 'empty string'})`);
       return { data: null, error: "Not authenticated", errorCategory: "auth" };
     }
+
+    console.log(`[coresenseApi] 🔑 [${requestId}] Token present, length: ${token.length}, starts with: ${token.substring(0, 20)}...`);
 
     const timeoutMs = options.timeout || 10000; // Default 10 second timeout
     const controller = new AbortController();
@@ -250,12 +287,19 @@ async function apiRequest<T>(
       const fullUrl = `${API_URL}${endpoint}`;
       console.log(`[coresenseApi] 🌐 [${requestId}] Full URL: ${fullUrl}`);
 
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Always add Authorization header if we have a token
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+        console.log(`[coresenseApi] 🔐 [${requestId}] Authorization header set`);
+      }
+
       const response = await fetch(fullUrl, {
         method: options.method || "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers,
         body: options.body ? JSON.stringify(options.body) : undefined,
         signal: controller.signal,
       });
@@ -1026,6 +1070,52 @@ export async function getHealthInsights(): Promise<{
 }
 
 // ============================================================================
+// METRICS API (Personal Analytics)
+// ============================================================================
+
+import type {
+  QuickStats,
+  LatestMetrics,
+  MetricInput,
+  LogMetricResponse,
+  BatchLogResponse,
+} from '../types/metrics';
+
+export async function getQuickStats(): Promise<{
+  data: QuickStats | null;
+  error: string | null;
+}> {
+  return apiRequest<QuickStats>('/api/v1/metrics/quick-stats');
+}
+
+export async function getLatestMetrics(): Promise<{
+  data: LatestMetrics | null;
+  error: string | null;
+}> {
+  return apiRequest<LatestMetrics>('/api/v1/metrics/latest');
+}
+
+export async function logMetric(metric: MetricInput): Promise<{
+  data: LogMetricResponse | null;
+  error: string | null;
+}> {
+  return apiRequest<LogMetricResponse>('/api/v1/metrics/log', {
+    method: 'POST',
+    body: metric,
+  });
+}
+
+export async function logBatchMetrics(metrics: MetricInput[]): Promise<{
+  data: BatchLogResponse | null;
+  error: string | null;
+}> {
+  return apiRequest<BatchLogResponse>('/api/v1/metrics/batch', {
+    method: 'POST',
+    body: { metrics },
+  });
+}
+
+// ============================================================================
 // TODOS API (Shared To-Do List)
 // ============================================================================
 
@@ -1187,6 +1277,23 @@ export async function updateNotificationPreferences(
   return { success: data?.success || false, error };
 }
 
+export async function sendTestNotification(): Promise<{
+  success: boolean;
+  error: string | null;
+}> {
+  const { data, error } = await apiRequest<{ success: boolean }>(
+    '/api/v1/notifications/coach-checkin',
+    {
+      method: 'POST',
+      body: {
+        message: "Hey! This is a test notification from CoreSense. 🎉",
+        priority: "normal",
+      },
+    },
+  );
+  return { success: data?.success || false, error };
+}
+
 // Export all functions
 export const coresenseApi = {
   // Home
@@ -1238,6 +1345,12 @@ export const coresenseApi = {
   recordStreak,
   getStreaksLegacy,
 
+  // Metrics (Personal Analytics)
+  getQuickStats,
+  getLatestMetrics,
+  logMetric,
+  logBatchMetrics,
+
   // Message Limits
   getMessageUsage,
   upgradeToPro,
@@ -1255,6 +1368,7 @@ export const coresenseApi = {
   unregisterDeviceToken,
   getNotificationPreferences,
   updateNotificationPreferences,
+  sendTestNotification,
 };
 
 export default coresenseApi;

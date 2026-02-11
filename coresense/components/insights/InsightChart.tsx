@@ -1,12 +1,13 @@
 /**
  * Insight Chart Component
- * Simple bar chart for pattern evidence visualization.
- * Minimal design - no axis labels, highlight bar at specified index.
+ * Premium dark SaaS aesthetic - unified purple accent system
+ * Clean, minimal bar chart with purple highlights
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { Colors, Spacing, Typography } from '../../constants/theme';
+import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -25,32 +26,41 @@ export function InsightChart({
   labels,
   values,
   highlightIndex,
-  highlightColor = Colors.primary,
-  barColor = Colors.glassBorder,
+  highlightColor,
+  barColor,
   showLabels = true,
   showValues = true,
-  height = 120,
+  height = 100,
 }: InsightChartProps) {
+  const { colors } = useTheme();
+  const actualHighlightColor = highlightColor || colors.primary;
+  const actualBarColor = barColor || colors.border;
   // Calculate max value for scaling
   const maxValue = Math.max(...values, 1);
   const chartWidth = screenWidth - Spacing.lg * 4;
-  const barWidth = Math.min(32, chartWidth / labels.length - 8);
-  const barGap = 8;
+  const barWidth = Math.min(28, chartWidth / labels.length - 6);
+  const barGap = 6;
 
   return (
-    <View style={[styles.container, { height: height + 40 }]}>
+    <View style={[styles.container, { height: height + 32 }]}>
       {/* Bars */}
       <View style={[styles.barsContainer, { height }]}>
         {values.map((value, index) => {
           const isHighlighted = index === highlightIndex;
           const barHeight = maxValue > 0 ? (value / maxValue) * height * 0.85 : 0;
-          const color = isHighlighted ? highlightColor : barColor;
+          const color = isHighlighted ? actualHighlightColor : actualBarColor;
 
           return (
             <View key={index} style={styles.barWrapper}>
               {/* Value above bar */}
               {showValues && value > 0 && (
-                <Text style={[styles.valueLabel, isHighlighted && styles.highlightedValueLabel]}>
+                <Text
+                  style={[
+                    styles.valueLabel,
+                    { color: colors.textTertiary },
+                    isHighlighted && { color: actualHighlightColor, fontWeight: '600' },
+                  ]}
+                >
                   {formatValue(value)}
                 </Text>
               )}
@@ -61,10 +71,10 @@ export function InsightChart({
                   styles.bar,
                   {
                     width: barWidth,
-                    height: Math.max(barHeight, 4),
+                    height: Math.max(barHeight, 3),
                     backgroundColor: color,
+                    opacity: isHighlighted ? 1 : 0.3,
                   },
-                  isHighlighted && styles.highlightedBar,
                 ]}
               />
             </View>
@@ -82,8 +92,8 @@ export function InsightChart({
                 key={index}
                 style={[
                   styles.label,
-                  { width: barWidth + barGap },
-                  isHighlighted && styles.highlightedLabel,
+                  { width: barWidth + barGap, color: colors.textTertiary },
+                  isHighlighted && [styles.highlightedLabel, { color: colors.textPrimary }],
                 ]}
                 numberOfLines={1}
               >
@@ -112,39 +122,28 @@ function formatValue(value: number): string {
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: Spacing.md,
-    paddingHorizontal: Spacing.sm,
+    marginVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
   },
   barsContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
   barWrapper: {
     alignItems: 'center',
     justifyContent: 'flex-end',
   },
   bar: {
-    borderRadius: 4,
-    minHeight: 4,
-  },
-  highlightedBar: {
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-    elevation: 5,
+    borderRadius: BorderRadius.small,
+    minHeight: 3,
   },
   valueLabel: {
     ...Typography.caption,
     color: Colors.textTertiary,
-    marginBottom: 4,
+    marginBottom: 3,
     fontSize: 10,
-  },
-  highlightedValueLabel: {
-    color: Colors.textPrimary,
-    fontWeight: '600',
   },
   labelsContainer: {
     flexDirection: 'row',

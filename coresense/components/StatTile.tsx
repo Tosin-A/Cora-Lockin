@@ -6,6 +6,7 @@ import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { Card } from './Card';
 
 interface StatTileProps {
@@ -14,6 +15,7 @@ interface StatTileProps {
   icon?: string | React.ReactNode;
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
+  subtitle?: string;
   onPress?: () => void;
 }
 
@@ -23,16 +25,18 @@ export const StatTile: React.FC<StatTileProps> = ({
   icon,
   trend,
   trendValue,
+  subtitle,
   onPress,
 }) => {
+  const { colors } = useTheme();
   const trendColor =
-    trend === 'up' ? Colors.success : trend === 'down' ? Colors.error : Colors.textSecondary;
+    trend === 'up' ? colors.success : trend === 'down' ? colors.error : colors.textSecondary;
 
   // Render icon - handle both string icon names and React nodes
   const renderIcon = () => {
     if (!icon) return null;
     if (typeof icon === 'string') {
-      return <Ionicons name={icon as any} size={24} color={Colors.primary} />;
+      return <Ionicons name={icon as any} size={24} color={colors.primary} />;
     }
     return icon;
   };
@@ -41,8 +45,9 @@ export const StatTile: React.FC<StatTileProps> = ({
     <View style={styles.container}>
       {icon && <View style={styles.iconContainer}>{renderIcon()}</View>}
       <View style={styles.content}>
-        <Text style={styles.value}>{value}</Text>
-        <Text style={styles.label}>{label}</Text>
+        <Text style={[styles.value, { color: colors.textPrimary }]}>{value}</Text>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
+        {subtitle && <Text style={[styles.subtitle, { color: colors.textTertiary }]}>{subtitle}</Text>}
         {trend && trendValue && (
           <View style={styles.trendContainer}>
             <Text style={[styles.trend, { color: trendColor }]}>
@@ -84,6 +89,11 @@ const styles = StyleSheet.create({
   label: {
     ...Typography.bodySmall,
     color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  subtitle: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
     marginBottom: Spacing.xs,
   },
   trendContainer: {

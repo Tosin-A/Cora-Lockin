@@ -13,9 +13,15 @@ import { useAuthStore } from '../stores/authStore';
 import { useInsightsStore } from '../stores/insightsStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import * as Linking from 'expo-linking';
 import { supabase } from '../utils/supabase';
 import { initializeHealthKit } from '../utils/healthService';
+import {
+  setNotificationNavigationRef,
+  setupNotificationHandlers,
+  registerForPushNotifications,
+} from '../utils/notificationService';
 import type { User } from '../types';
 
 // Screens
@@ -28,6 +34,7 @@ import InsightsScreen from '../screens/InsightsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import AccountScreen from '../screens/AccountScreen';
 import CoachChatScreen from '../screens/CoachChatScreen';
+import TasksScreen from '../screens/TasksScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -35,16 +42,17 @@ const Tab = createBottomTabNavigator();
 function MainTabs() {
   // Check for new insights
   const hasNewInsights = useInsightsStore((state) => state.hasNewInsights());
+  const { colors } = useTheme();
 
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textTertiary,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textTertiary,
         tabBarStyle: {
-          backgroundColor: Colors.background,
-          borderTopColor: Colors.glassBorder,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           paddingBottom: 28,
           paddingTop: 8,
@@ -304,8 +312,10 @@ export default function AppNavigator() {
     };
   }, [checkAuth]);
 
-  // Initialize HealthKit and prefetch insights on component mount if user is already authenticated
+  // Initialize HealthKit, notifications, and prefetch insights on component mount if user is already authenticated
   useEffect(() => {
+    let notificationCleanup: (() => void) | null = null;
+
     if (isAuthenticated) {
       console.log('[AppNavigator] User already authenticated, initializing services...');
 
@@ -321,10 +331,27 @@ export default function AppNavigator() {
           console.error('[AppNavigator] HealthKit initialization failed on mount:', error);
         });
 
+      // Initialize push notifications
+      console.log('[AppNavigator] Setting up notification handlers...');
+      setupNotificationHandlers()
+        .then((cleanup) => {
+          notificationCleanup = cleanup;
+          console.log('[AppNavigator] Notification handlers set up');
+        })
+        .catch((error) => {
+          console.error('[AppNavigator] Notification handler setup failed:', error);
+        });
+
       // Prefetch commitment insights for badge display
       console.log('[AppNavigator] Prefetching commitment insights...');
       useInsightsStore.getState().fetchCommitmentInsights();
     }
+
+    return () => {
+      if (notificationCleanup) {
+        notificationCleanup();
+      }
+    };
   }, [isAuthenticated]);
 
   // Track auth state changes for logging and initialize services
@@ -354,9 +381,31 @@ export default function AppNavigator() {
           .catch((error) => {
             console.error('[AppNavigator] HealthKit initialization failed:', error);
           });
+
+        // Register for push notifications when user becomes authenticated
+        console.log('[AppNavigator] Registering for push notifications...');
+        registerForPushNotifications()
+          .then((token) => {
+            if (token) {
+              console.log('[AppNavigator] Push notifications registered');
+            } else {
+              console.log('[AppNavigator] Push notifications not available or denied');
+            }
+          })
+          .catch((error) => {
+            console.error('[AppNavigator] Push notification registration failed:', error);
+          });
       }
     }
     prevIsAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
+  // Set navigation ref for notification deep linking
+  useEffect(() => {
+    if (navigationRef.current && isAuthenticated) {
+      setNotificationNavigationRef(navigationRef.current);
+      console.log('[AppNavigator] Navigation ref set for notifications');
+    }
   }, [isAuthenticated]);
 
   if (isLoading) {
@@ -364,9 +413,14 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer 
+    <NavigationContainer
       ref={navigationRef}
       key={isAuthenticated ? 'authenticated' : 'unauthenticated'}
+      onReady={() => {
+        if (navigationRef.current && isAuthenticated) {
+          setNotificationNavigationRef(navigationRef.current);
+        }
+      }}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
@@ -378,9 +432,22 @@ export default function AppNavigator() {
           <>
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen
+              name="Tasks"
+              component={TasksScreen}
+              options={{
+                headerShown: true,
+                headerStyle: {
+                  backgroundColor: Colors.background,
+                },
+                headerTintColor: Colors.textPrimary,
+                headerTitle: 'Tasks',
+                headerBackTitle: 'Home',
+              }}
+            />
+            <Stack.Screen
               name="Account"
               component={AccountScreen}
-              options={({ navigation }) => ({ 
+              options={({ navigation }) => ({
                 presentation: 'modal',
                 gestureEnabled: true,
                 headerShown: true,

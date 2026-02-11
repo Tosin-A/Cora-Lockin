@@ -17,12 +17,12 @@ export enum PatternType {
 }
 
 export interface PatternEvidence {
-  type: PatternType;
+  type: PatternType | string;    // Pattern type (may come as string from API)
   labels: string[];              // X-axis labels for chart (e.g., ['Mon', 'Tue', ...])
   values: number[];              // Y-axis values for chart
-  highlight_index?: number;      // Index of the bar to highlight
-  trend_direction: 'up' | 'down' | 'stable';
-  trend_value?: string;          // e.g., "+15%" or "3 days"
+  highlight_index?: number | null; // Index of the bar to highlight
+  trend_direction: 'up' | 'down' | 'stable' | string;
+  trend_value?: string | null;   // e.g., "+15%" or "3 days"
 }
 
 export interface InsightData {
@@ -32,8 +32,9 @@ export interface InsightData {
   coach_commentary: string;      // Main AI coach interpretation (largest text)
   evidence: PatternEvidence;
   action_text?: string;          // Optional action button text
+  action_steps?: string[];       // Optional action steps from coach
   is_new: boolean;               // Show "NEW" badge
-  created_at: string;
+  created_at?: string;
 }
 
 export interface InsightsScreenData {
@@ -46,11 +47,11 @@ export interface InsightsScreenData {
 // Insight interaction types for tracking engagement
 export type InteractionType = 'helpful' | 'not_helpful' | 'dismissed' | 'viewed';
 
-// Color mapping for insight types
+// Color mapping for insight types (unified purple-based system)
 export const InsightTypeColors: Record<InsightType, string> = {
-  [InsightType.BEHAVIORAL]: '#00D4FF',  // Neon blue
-  [InsightType.PROGRESS]: '#00FF88',    // Neon green
-  [InsightType.RISK]: '#FFB800',        // Neon amber
+  [InsightType.BEHAVIORAL]: '#8B5CF6',  // Primary purple
+  [InsightType.PROGRESS]: '#A78BFA',    // Light purple
+  [InsightType.RISK]: '#7C3AED',        // Deep purple
 };
 
 // Icon mapping for pattern types

@@ -1,5 +1,6 @@
 /**
  * Auth Screen
+ * Supports both light and dark themes
  */
 
 import React, { useState } from 'react';
@@ -13,8 +14,10 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Colors, Spacing, Typography } from '../constants/theme';
+import { Spacing, Typography } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { PurpleButton } from '../components/PurpleButton';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { useAuthStore } from '../stores/authStore';
@@ -22,7 +25,8 @@ import { handleOAuthError } from '../utils/oauth';
 
 export default function AuthScreen() {
   const navigation = useNavigation();
-  const { signIn, signUp, signInWithGoogle, signInWithApple, isLoading, googleLoading, appleLoading } = useAuthStore();
+  const { colors } = useTheme();
+  const { signIn, signUp, signInWithGoogle, isLoading, googleLoading } = useAuthStore();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +35,6 @@ export default function AuthScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [generalError, setGeneralError] = useState('');
   const [googleError, setGoogleError] = useState('');
-  const [appleError, setAppleError] = useState('');
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -138,31 +141,27 @@ export default function AuthScreen() {
     }
   };
 
-  const handleAppleSignIn = async () => {
-    setAppleError('');
-    setGeneralError('');
-
-    try {
-      console.log('AuthScreen: Starting Apple sign-in...');
-      await signInWithApple();
-      console.log('AuthScreen: Apple sign-in successful');
-    } catch (err: any) {
-      console.error('AuthScreen: Apple sign-in error:', err);
-
-      const errorMessage = handleOAuthError(err);
-      setAppleError(errorMessage);
-
-      Alert.alert(
-        'Apple Sign-In Failed',
-        errorMessage,
-        [{ text: 'OK' }]
-      );
-    }
+  const dynamicStyles = {
+    container: {
+      backgroundColor: colors.background,
+    },
+    title: {
+      color: colors.textPrimary,
+    },
+    subtitle: {
+      color: colors.textSecondary,
+    },
+    footerText: {
+      color: colors.textSecondary,
+    },
+    error: {
+      color: colors.error,
+    },
   };
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, dynamicStyles.container]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -170,8 +169,8 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.title}>CoreSense</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, dynamicStyles.title]}>CoreSense</Text>
+          <Text style={[styles.subtitle, dynamicStyles.subtitle]}>
             {isSignUp ? 'Create your account' : 'Welcome back'}
           </Text>
         </View>
@@ -214,33 +213,18 @@ export default function AuthScreen() {
           />
 
           {/* Continue with Google Button - Placed after password field */}
-          <PurpleButton
-            title="Continue with Google"
+          <GoogleSignInButton
             onPress={handleGoogleSignIn}
-            variant="secondary"
             loading={googleLoading}
             style={styles.googleButton}
           />
 
           {googleError && (
-            <Text style={styles.googleError}>{googleError}</Text>
-          )}
-
-          {/* Continue with Apple Button */}
-          <PurpleButton
-            title="Continue with Apple"
-            onPress={handleAppleSignIn}
-            variant="secondary"
-            loading={appleLoading}
-            style={styles.appleButton}
-          />
-
-          {appleError && (
-            <Text style={styles.appleError}>{appleError}</Text>
+            <Text style={[styles.googleError, dynamicStyles.error]}>{googleError}</Text>
           )}
 
           {generalError && (
-            <Text style={styles.generalError}>{generalError}</Text>
+            <Text style={[styles.generalError, dynamicStyles.error]}>{generalError}</Text>
           )}
 
           <PurpleButton
@@ -251,7 +235,7 @@ export default function AuthScreen() {
           />
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>
+            <Text style={[styles.footerText, dynamicStyles.footerText]}>
               {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
             </Text>
             <PurpleButton
@@ -274,7 +258,6 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollContent: {
     flexGrow: 1,
@@ -287,12 +270,10 @@ const styles = StyleSheet.create({
   },
   title: {
     ...Typography.h1,
-    color: Colors.textPrimary,
     marginBottom: Spacing.sm,
   },
   subtitle: {
     ...Typography.body,
-    color: Colors.textSecondary,
   },
   card: {
     marginBottom: Spacing.lg,
@@ -308,51 +289,20 @@ const styles = StyleSheet.create({
   },
   footerText: {
     ...Typography.bodySmall,
-    color: Colors.textSecondary,
   },
   socialButton: {
     marginTop: Spacing.sm,
   },
   generalError: {
     ...Typography.caption,
-    color: Colors.error,
     marginTop: Spacing.xs,
     textAlign: 'center',
-  },
-  oauthInfo: {
-    marginTop: Spacing.lg,
-    padding: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  oauthInfoText: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: Spacing.xs,
-  },
-  oauthSubText: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    opacity: 0.7,
   },
   googleButton: {
     marginTop: Spacing.md,
   },
   googleError: {
     ...Typography.caption,
-    color: Colors.error,
-    marginTop: Spacing.xs,
-    textAlign: 'center',
-  },
-  appleButton: {
-    marginTop: Spacing.sm,
-  },
-  appleError: {
-    ...Typography.caption,
-    color: Colors.error,
     marginTop: Spacing.xs,
     textAlign: 'center',
   },

@@ -3,7 +3,7 @@
  * Main chat interface with real-time messaging, streaming responses, and quick actions
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -18,8 +18,10 @@ import {
   Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRoute, RouteProp } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Typography, Spacing } from "../constants/theme";
+import { useTheme } from "../contexts/ThemeContext";
 import ChatMessage from "../components/ChatMessage";
 import ChatInput from "../components/ChatInput";
 import TypingIndicator from "../components/TypingIndicator";
@@ -27,8 +29,24 @@ import { useChatStore } from "../stores/chatStore";
 import { useUserStore } from "../stores/userStore";
 import { useInsightsStore } from "../stores/insightsStore";
 
+// Route params type for insight context
+type CoachChatRouteParams = {
+  Coach: {
+    context?: {
+      type: 'insight';
+      insightId: string;
+      title: string;
+      commentary: string;
+      patternType?: string;
+      actionSteps?: string[];
+    };
+  };
+};
+
 export default function CoachChatScreen({ navigation }: any) {
+  const route = useRoute<RouteProp<CoachChatRouteParams, 'Coach'>>();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const flatListRef = useRef<FlatList>(null);
 
   // Store hooks
@@ -49,6 +67,32 @@ export default function CoachChatScreen({ navigation }: any) {
   const { generateInsightFromChat } = useInsightsStore();
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // Generate pre-filled message from insight context
+  const initialMessage = useMemo(() => {
+    const context = route.params?.context;
+    if (!context || context.type !== 'insight') return "";
+
+    // Create a conversational prompt based on the insight
+    const { title, commentary, actionSteps } = context;
+
+    // Build a natural question about the insight
+    let prompt = `I saw your insight about "${title}". `;
+
+    if (commentary) {
+      // Add context from the coach commentary
+      prompt += `You mentioned: "${commentary}" `;
+    }
+
+    prompt += "Can you give me more specific advice on how to improve this?";
+
+    // If there are action steps, reference them
+    if (actionSteps && actionSteps.length > 0) {
+      prompt += " I'd also like more details on the steps you suggested.";
+    }
+
+    return prompt;
+  }, [route.params?.context]);
 
   useEffect(() => {
     // Load chat history when screen focuses (handles fast navigation)
@@ -149,6 +193,8 @@ export default function CoachChatScreen({ navigation }: any) {
           {
             paddingTop: Math.max(insets.top, Spacing.md),
             paddingBottom: Spacing.sm,
+            backgroundColor: colors.surface,
+            borderBottomColor: colors.border,
           },
         ]}
       >
@@ -161,16 +207,16 @@ export default function CoachChatScreen({ navigation }: any) {
             <Ionicons
               name="chevron-back"
               size={24}
-              color={Colors.textPrimary}
+              color={colors.textPrimary}
             />
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
-            <View style={styles.coachAvatar}>
+            <View style={[styles.coachAvatar, { backgroundColor: colors.primary }]}>
               <Ionicons name="person" size={20} color="#FFFFFF" />
             </View>
-            <Text style={styles.headerTitle}>Cora</Text>
-            {typing && <Text style={styles.headerSubtitle}>Typing...</Text>}
+            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Cora</Text>
+            {typing && <Text style={[styles.headerSubtitle, { color: colors.textTertiary }]}>Typing...</Text>}
           </View>
 
           <TouchableOpacity
@@ -202,7 +248,7 @@ export default function CoachChatScreen({ navigation }: any) {
             <Ionicons
               name="ellipsis-vertical"
               size={20}
-              color={Colors.textSecondary}
+              color={colors.textSecondary}
             />
           </TouchableOpacity>
         </View>
@@ -226,16 +272,16 @@ export default function CoachChatScreen({ navigation }: any) {
 
     return (
       <View style={styles.emptyChatContainer}>
-        <View style={styles.welcomeCard}>
+        <View style={[styles.welcomeCard, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
           <View style={styles.welcomeIcon}>
             <Ionicons
               name="chatbubble-ellipses"
               size={48}
-              color={Colors.accent}
+              color={colors.accent}
             />
           </View>
-          <Text style={styles.welcomeTitle}>Cora</Text>
-          <Text style={styles.welcomeSubtitle}>
+          <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>Cora</Text>
+          <Text style={[styles.welcomeSubtitle, { color: colors.textSecondary }]}>
             I'm here to hold you accountable. Not to cheer you on. Not to be
             your therapist. To call you out when you're making excuses and
             celebrate when you're actually doing the work.
@@ -248,7 +294,7 @@ export default function CoachChatScreen({ navigation }: any) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       {renderHeader()}
 
@@ -281,8 +327,8 @@ export default function CoachChatScreen({ navigation }: any) {
         {/* Loading Overlay */}
         {loading && (
           <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Loading chat...</Text>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.textPrimary }]}>Loading chat...</Text>
           </View>
         )}
 
@@ -294,6 +340,7 @@ export default function CoachChatScreen({ navigation }: any) {
             onQuickActionPress={handleQuickAction}
             disabled={sending || loading}
             placeholder="Chat to me"
+            initialMessage={initialMessage}
           />
         </View>
       </KeyboardAvoidingView>

@@ -1,32 +1,25 @@
 /**
  * Pattern Card Component
- * Displays a single pattern insight with coach commentary and evidence chart.
- * Supports swipe gestures: right = helpful, left = dismiss.
- * Color-coded by type: behavioral (blue), progress (green), risk (amber).
+ * Premium dark SaaS aesthetic - unified purple accent system
+ * Clean, minimal, modern with subtle purple glows
  */
 
-import React, { useRef } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Animated,
-  PanResponder,
-  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, TouchTarget } from '../../constants/theme';
+import { useTheme } from '../../contexts/ThemeContext';
 import { InsightChart } from './InsightChart';
 import {
   InsightType,
   PatternType,
-  InsightTypeColors,
   PatternTypeIcons,
 } from '../../types/insights';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const SWIPE_THRESHOLD = 80;
 
 interface PatternCardProps {
   id: string;
@@ -60,56 +53,18 @@ export function PatternCard({
   onHelpful,
   onDismiss,
 }: PatternCardProps) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const typeColor = InsightTypeColors[type];
+  const { colors } = useTheme();
   const patternIcon = PatternTypeIcons[evidence.type] || 'analytics-outline';
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 10;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        translateX.setValue(gestureState.dx);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dx > SWIPE_THRESHOLD) {
-          // Swiped right - helpful
-          Animated.timing(translateX, {
-            toValue: SCREEN_WIDTH,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            onHelpful?.();
-            translateX.setValue(0);
-          });
-        } else if (gestureState.dx < -SWIPE_THRESHOLD) {
-          // Swiped left - dismiss
-          Animated.timing(translateX, {
-            toValue: -SCREEN_WIDTH,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            onDismiss?.();
-            translateX.setValue(0);
-          });
-        } else {
-          // Snap back
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
+  // Use primary purple for all cards (unified color system)
+  const accentColor = colors.primary;
 
   const getTrendIcon = () => {
     switch (evidence.trend_direction) {
       case 'up':
-        return 'trending-up';
+        return 'arrow-up';
       case 'down':
-        return 'trending-down';
+        return 'arrow-down';
       default:
         return 'remove';
     }
@@ -118,42 +73,46 @@ export function PatternCard({
   const getTrendColor = () => {
     switch (evidence.trend_direction) {
       case 'up':
-        return type === InsightType.RISK ? Colors.warning : Colors.success;
+        return type === InsightType.RISK ? colors.error : colors.success;
       case 'down':
-        return type === InsightType.RISK ? Colors.success : Colors.warning;
+        return type === InsightType.RISK ? colors.success : colors.primary;
       default:
-        return Colors.textTertiary;
+        return colors.textTertiary;
     }
   };
 
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        { transform: [{ translateX }] },
-      ]}
-      {...panResponder.panHandlers}
-    >
-      <View style={[styles.card, { borderLeftColor: typeColor }]}>
-        {/* Header: Icon + Title + Trend badge */}
+    <View style={styles.container}>
+      <View style={[
+        styles.card,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.borderPurple,
+          shadowColor: colors.primary,
+        }
+      ]}>
+        {/* Subtle purple top border */}
+        <View style={[styles.typeIndicator, { backgroundColor: accentColor, opacity: 0.6 }]} />
+
+        {/* Header: Icon + Title */}
         <View style={styles.header}>
-          <View style={[styles.iconContainer, { backgroundColor: `${typeColor}20` }]}>
-            <Ionicons name={patternIcon as any} size={20} color={typeColor} />
+          <View style={[styles.iconContainer, { backgroundColor: colors.primaryMuted }]}>
+            <Ionicons name={patternIcon as any} size={18} color={accentColor} />
           </View>
           <View style={styles.headerContent}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>{title}</Text>
+              <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={2}>{title}</Text>
               {isNew && (
-                <View style={styles.newBadge}>
-                  <Text style={styles.newBadgeText}>NEW</Text>
+                <View style={[styles.newBadge, { backgroundColor: colors.primaryMuted }]}>
+                  <Text style={[styles.newBadgeText, { color: colors.primary }]}>NEW</Text>
                 </View>
               )}
             </View>
             {evidence.trend_value && (
-              <View style={styles.trendBadge}>
+              <View style={[styles.trendBadge, { backgroundColor: `${getTrendColor()}15` }]}>
                 <Ionicons
                   name={getTrendIcon() as any}
-                  size={14}
+                  size={12}
                   color={getTrendColor()}
                 />
                 <Text style={[styles.trendValue, { color: getTrendColor() }]}>
@@ -164,39 +123,36 @@ export function PatternCard({
           </View>
         </View>
 
-        {/* Coach Commentary - Large text */}
-        <Text style={styles.commentary}>{coachCommentary}</Text>
+        {/* Coach Commentary */}
+        <Text style={[styles.commentary, { color: colors.textSecondary }]}>{coachCommentary}</Text>
 
         {/* Evidence Chart */}
-        <InsightChart
-          labels={evidence.labels}
-          values={evidence.values}
-          highlightIndex={evidence.highlight_index}
-          highlightColor={typeColor}
-          height={100}
-        />
+        <View style={styles.chartContainer}>
+          <InsightChart
+            labels={evidence.labels}
+            values={evidence.values}
+            highlightIndex={evidence.highlight_index}
+            highlightColor={accentColor}
+            height={80}
+          />
+        </View>
 
-        {/* Footer: Ask Coach button */}
-        <View style={styles.footer}>
+        {/* Footer: Actions */}
+        <View style={[styles.footer, { borderTopColor: colors.borderPurple }]}>
           {actionText && onAskCoach && (
             <TouchableOpacity
-              style={[styles.askCoachButton, { borderColor: typeColor }]}
+              style={styles.askCoachButton}
               onPress={onAskCoach}
               activeOpacity={0.7}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
             >
-              <Ionicons name="chatbubble-outline" size={16} color={typeColor} />
-              <Text style={[styles.askCoachText, { color: typeColor }]}>
-                Ask Coach
-              </Text>
+              <Ionicons name="chatbubble-outline" size={16} color={colors.primary} />
+              <Text style={[styles.askCoachText, { color: colors.primary }]}>Ask Coach</Text>
             </TouchableOpacity>
           )}
-          <View style={styles.swipeHint}>
-            <Ionicons name="swap-horizontal" size={14} color={Colors.textTertiary} />
-            <Text style={styles.swipeHintText}>Swipe to react</Text>
-          </View>
         </View>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -206,22 +162,37 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.large,
+    borderRadius: BorderRadius.xxl,
     borderWidth: 1,
-    borderColor: Colors.glassBorder,
-    borderLeftWidth: 4,
+    borderColor: Colors.borderPurple,
     padding: Spacing.lg,
-    ...Shadows.card,
+    overflow: 'hidden',
+    // Subtle purple glow shadow
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  typeIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: Spacing.md,
+    paddingTop: Spacing.xs,
   },
   iconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: BorderRadius.large,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
@@ -231,7 +202,7 @@ const styles = StyleSheet.create({
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.sm,
   },
   title: {
@@ -240,65 +211,62 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   newBadge: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primaryMuted,
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.small,
   },
   newBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+    ...Typography.label,
+    fontSize: 9,
+    color: Colors.primary,
     letterSpacing: 0.5,
   },
   trendBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     marginTop: Spacing.xs,
-    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.small,
+    gap: 3,
   },
   trendValue: {
     ...Typography.caption,
     fontWeight: '600',
+    fontSize: 11,
   },
   commentary: {
-    fontSize: 18,  // Large - second only to coach summary
-    fontWeight: '500',
-    fontFamily: 'Inter-Regular',
-    color: Colors.textPrimary,
-    lineHeight: 26,
+    ...Typography.body,
+    color: Colors.textSecondary,
     marginBottom: Spacing.md,
+    lineHeight: 22,
+  },
+  chartContainer: {
+    marginBottom: Spacing.md,
+    marginHorizontal: -Spacing.xs,
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: Spacing.sm,
-    paddingTop: Spacing.sm,
+    justifyContent: 'flex-start',
+    paddingTop: Spacing.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.glassBorder,
+    borderTopColor: Colors.borderPurple,
   },
   askCoachButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: TouchTarget.minimum,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.small,
-    borderWidth: 1,
+    marginLeft: -Spacing.md,
     gap: Spacing.xs,
   },
   askCoachText: {
     ...Typography.buttonSmall,
-  },
-  swipeHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  swipeHintText: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-    fontSize: 10,
+    color: Colors.primary,
   },
 });
 

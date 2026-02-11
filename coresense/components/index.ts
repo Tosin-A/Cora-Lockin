@@ -3,6 +3,7 @@
  */
 
 export { PurpleButton } from "./PurpleButton";
+export { GoogleSignInButton } from "./GoogleSignInButton";
 export { Card } from "./Card";
 export { StatTile } from "./StatTile";
 export { ToggleSwitch } from "./ToggleSwitch";
@@ -19,6 +20,7 @@ export { default as MiniRitualPrompt } from "./MiniRitualPrompt";
 export { default as ActionSuggestionCard } from "./ActionSuggestionCard";
 export { default as CommitmentTracker } from "./CommitmentTracker";
 export { default as EngagementPrompt } from "./EngagementPrompt";
+export { default as DidItButton } from "./DidItButton";
 
 // Insights Screen components
 export { default as WeeklySummaryCard } from "./WeeklySummaryCard";

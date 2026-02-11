@@ -28,6 +28,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from "../constants/theme";
+import { useTheme } from "../contexts/ThemeContext";
 import { Card } from "../components/Card";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { PurpleButton } from "../components/PurpleButton";
@@ -35,9 +36,9 @@ import { useAuthStore } from "../stores/authStore";
 import { useUserStore } from "../stores/userStore";
 import {
   requestHealthKitPermissions,
-  checkPermissions,
 } from "../utils/healthService";
 import { useHealthStore } from "../stores/healthStore";
+import { useThemeStore, ThemeMode } from "../stores/themeStore";
 import { API_BASE_URL } from "../utils/apiConfig";
 import {
   coresenseApi,
@@ -157,12 +158,12 @@ interface SectionHeaderProps {
   iconColor?: string;
 }
 
-const SectionHeader: React.FC<SectionHeaderProps> = ({ icon, title, iconColor = Colors.primary }) => (
+const SectionHeader: React.FC<SectionHeaderProps & { colors: any }> = ({ icon, title, iconColor, colors }) => (
   <View style={styles.sectionHeader}>
-    <View style={[styles.sectionIconContainer, { backgroundColor: `${iconColor}15` }]}>
-      <Ionicons name={icon} size={18} color={iconColor} />
+    <View style={[styles.sectionIconContainer, { backgroundColor: `${iconColor || colors.primary}15` }]}>
+      <Ionicons name={icon} size={18} color={iconColor || colors.primary} />
     </View>
-    <Text style={styles.sectionTitle}>{title}</Text>
+    <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{title}</Text>
   </View>
 );
 
@@ -204,6 +205,7 @@ const SkeletonLoader: React.FC<{ width?: number | string; height?: number }> = (
 export default function SettingsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const { user } = useAuthStore();
   const { preferences, fetchPreferences, updatePreferences, profile } = useUserStore();
 
@@ -222,9 +224,31 @@ export default function SettingsScreen() {
   const [feedbackCategory, setFeedbackCategory] = useState<"bug" | "feature" | "general">("general");
   const [sendingFeedback, setSendingFeedback] = useState(false);
 
-  // HealthKit state (unchanged)
-  const [healthKitPermissions, setHealthKitPermissions] = useState<boolean | null>(null);
+  // HealthKit state - use healthStore as source of truth
+  const healthKitEnabled = useHealthStore((state) => state.healthKitEnabled);
+  const setHealthKitEnabled = useHealthStore((state) => state.setHealthKitEnabled);
+  const healthKitAvailable = useHealthStore((state) => state.isAvailable);
+  const healthKitPermissionsGranted = useHealthStore((state) => state.permissionsGranted);
   const [requestingHealthKit, setRequestingHealthKit] = useState(false);
+
+  // Determine HealthKit status description
+  const getHealthKitDescription = () => {
+    if (!healthKitEnabled) {
+      return "Enable to sync sleep, steps & activity data";
+    }
+    if (!healthKitAvailable) {
+      return "Enabled - rebuild app to connect HealthKit";
+    }
+    if (!healthKitPermissionsGranted) {
+      return "Enabled - grant permissions in Health settings";
+    }
+    return "Connected - syncing sleep, steps & activity data";
+  };
+
+  // Theme state
+  const themeMode = useThemeStore((state) => state.mode);
+  const isDark = useThemeStore((state) => state.isDark);
+  const setThemeMode = useThemeStore((state) => state.setMode);
 
   // Notification preferences state
   const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>({
@@ -240,6 +264,7 @@ export default function SettingsScreen() {
   });
   const [notifPrefsLoading, setNotifPrefsLoading] = useState(true);
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false);
+  const [sendingTestNotif, setSendingTestNotif] = useState(false);
 
   // NEW: Toast state
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "error" | "info" }>({
@@ -285,11 +310,8 @@ export default function SettingsScreen() {
     setLocalPrefs(preferences || DEFAULT_PREFERENCES);
   }, [preferences]);
 
-  useEffect(() => {
-    checkPermissions().then((granted) => {
-      setHealthKitPermissions(granted);
-    });
-  }, []);
+  // HealthKit enabled state is now managed by healthStore - no need to check permissions on mount
+  // The healthStore persists the enabled state and syncs data when enabled
 
   // Animate save button visibility
   useEffect(() => {
@@ -309,9 +331,9 @@ export default function SettingsScreen() {
     setRequestingHealthKit(true);
     try {
       const result = await requestHealthKitPermissions();
-      setHealthKitPermissions(result.permissionsGranted);
 
       if (result.permissionsGranted) {
+        setHealthKitEnabled(true);
         showToast("HealthKit connected successfully!", "success");
       } else {
         Alert.alert(
@@ -360,6 +382,23 @@ export default function SettingsScreen() {
     if (!localPrefs) return;
     setLocalPrefs({ ...localPrefs, [key]: value });
     setHasChanges(true);
+  };
+
+  // Send test notification
+  const handleTestNotification = async () => {
+    setSendingTestNotif(true);
+    try {
+      const { success, error } = await coresenseApi.sendTestNotification();
+      if (success) {
+        showToast("Test notification sent! Check your device.", "success");
+      } else {
+        showToast(error || "Failed to send test notification", "error");
+      }
+    } catch (e) {
+      showToast("Failed to send test notification", "error");
+    } finally {
+      setSendingTestNotif(false);
+    }
   };
 
   // Update notification preference (auto-saves to API)
@@ -509,17 +548,17 @@ export default function SettingsScreen() {
   // Loading state with skeletons
   if (isLoading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+        <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
           <TouchableOpacity
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: colors.surface }]}
             onPress={() => navigation.goBack()}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Settings</Text>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Settings</Text>
           <View style={styles.headerPlaceholder} />
         </View>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
@@ -549,18 +588,18 @@ export default function SettingsScreen() {
         onHide={hideToast}
       />
 
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
           <TouchableOpacity
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: colors.surface }]}
             onPress={() => navigation.goBack()}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Settings</Text>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Settings</Text>
           <View style={styles.headerPlaceholder} />
         </View>
 
@@ -577,7 +616,7 @@ export default function SettingsScreen() {
           {/* SECTION 1: Account Profile */}
           {/* ================================================================ */}
           <TouchableOpacity
-            style={styles.accountLink}
+            style={[styles.accountLink, { backgroundColor: colors.surface }]}
             onPress={() => navigation.navigate("Account" as never)}
             activeOpacity={0.7}
             accessibilityLabel="View account settings"
@@ -585,28 +624,74 @@ export default function SettingsScreen() {
             accessibilityRole="button"
           >
             <View style={styles.accountLinkContent}>
-              <View style={styles.accountAvatar}>
-                <Text style={styles.accountAvatarText}>
+              <View style={[styles.accountAvatar, { backgroundColor: colors.primary }]}>
+                <Text style={[styles.accountAvatarText, { color: '#FFFFFF' }]}>
                   {profile?.username?.[0]?.toUpperCase() ||
                     user?.email?.[0]?.toUpperCase() ||
                     "U"}
                 </Text>
               </View>
               <View style={styles.accountInfo}>
-                <Text style={styles.accountName}>
+                <Text style={[styles.accountName, { color: colors.textPrimary }]}>
                   {profile?.username || "Your Account"}
                 </Text>
-                <Text style={styles.accountEmail}>{user?.email}</Text>
+                <Text style={[styles.accountEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
+              <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </View>
           </TouchableOpacity>
 
           {/* ================================================================ */}
-          {/* SECTION 2: Notifications */}
+          {/* SECTION 2: Appearance */}
           {/* ================================================================ */}
           <Card style={styles.section}>
-            <SectionHeader icon="notifications-outline" title="Notifications" />
+            <SectionHeader icon="color-palette-outline" title="Appearance" iconColor={colors.neonBlue} colors={colors} />
+
+            <View style={styles.themeSelector}>
+              <Text style={[styles.themeSelectorLabel, { color: colors.textPrimary }]}>Theme</Text>
+              <View style={styles.themeOptions}>
+                {(['light', 'dark'] as const).map((mode) => (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[
+                      styles.themeOption,
+                      { backgroundColor: colors.surfaceMedium },
+                      themeMode === mode && [styles.themeOptionActive, { borderColor: colors.primary, backgroundColor: colors.primaryMuted }],
+                    ]}
+                    onPress={() => setThemeMode(mode)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={mode === 'light' ? 'sunny-outline' : 'moon-outline'}
+                      size={20}
+                      color={themeMode === mode ? colors.primary : colors.textTertiary}
+                    />
+                    <Text
+                      style={[
+                        styles.themeOptionText,
+                        { color: colors.textTertiary },
+                        themeMode === mode && [styles.themeOptionTextActive, { color: colors.primary }],
+                      ]}
+                    >
+                      {mode === 'light' ? 'Light' : 'Dark'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <Text style={[styles.themeNote, { color: colors.textTertiary }]}>
+              {isDark
+                ? 'Dark mode is easier on the eyes at night'
+                : 'Light mode for better visibility in bright environments'}
+            </Text>
+          </Card>
+
+          {/* ================================================================ */}
+          {/* SECTION 3: Notifications */}
+          {/* ================================================================ */}
+          <Card style={styles.section}>
+            <SectionHeader icon="notifications-outline" title="Notifications" colors={colors} />
 
             <ToggleSwitch
               value={notifPrefs.notifications_enabled}
@@ -655,13 +740,35 @@ export default function SettingsScreen() {
               description="Get reminded when your streak is at risk"
               disabled={notifPrefsLoading || savingNotifPrefs || !notifPrefs.notifications_enabled}
             />
+
+            <View style={styles.divider} />
+
+            {/* Test Notification Button */}
+            <TouchableOpacity
+              style={[
+                styles.testNotifButton,
+                (!notifPrefs.notifications_enabled || sendingTestNotif) && styles.testNotifButtonDisabled
+              ]}
+              onPress={handleTestNotification}
+              disabled={!notifPrefs.notifications_enabled || sendingTestNotif}
+              activeOpacity={0.7}
+            >
+              {sendingTestNotif ? (
+                <ActivityIndicator size="small" color={Colors.textPrimary} />
+              ) : (
+                <Ionicons name="notifications-outline" size={18} color={Colors.textPrimary} />
+              )}
+              <Text style={styles.testNotifButtonText}>
+                {sendingTestNotif ? "Sending..." : "Send Test Notification"}
+              </Text>
+            </TouchableOpacity>
           </Card>
 
           {/* ================================================================ */}
-          {/* SECTION 3: Quiet Hours */}
+          {/* SECTION 4: Quiet Hours */}
           {/* ================================================================ */}
           <Card style={styles.section}>
-            <SectionHeader icon="moon-outline" title="Quiet Hours" iconColor={Colors.neonBlue} />
+            <SectionHeader icon="moon-outline" title="Quiet Hours" iconColor={colors.neonBlue} colors={colors} />
 
             <ToggleSwitch
               value={notifPrefs.quiet_hours_enabled}
@@ -677,39 +784,39 @@ export default function SettingsScreen() {
 
                 <View style={styles.timePickerRow}>
                   <View style={styles.timePickerItem}>
-                    <Text style={styles.timePickerLabel}>Start</Text>
+                    <Text style={[styles.timePickerLabel, { color: colors.textTertiary }]}>Start</Text>
                     <TouchableOpacity
-                      style={styles.timePickerButton}
+                      style={[styles.timePickerButton, { backgroundColor: colors.surfaceMedium, borderColor: colors.border }]}
                       onPress={() => setShowStartTimePicker(true)}
                       accessibilityLabel={`Start time: ${formatTime12Hour(notifPrefs.quiet_hours_start)}`}
                     >
-                      <Ionicons name="time-outline" size={18} color={Colors.primary} />
-                      <Text style={styles.timePickerValue}>
+                      <Ionicons name="time-outline" size={18} color={colors.primary} />
+                      <Text style={[styles.timePickerValue, { color: colors.textPrimary }]}>
                         {formatTime12Hour(notifPrefs.quiet_hours_start)}
                       </Text>
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.timePickerDivider}>
-                    <Ionicons name="arrow-forward" size={16} color={Colors.textTertiary} />
+                    <Ionicons name="arrow-forward" size={16} color={colors.textTertiary} />
                   </View>
 
                   <View style={styles.timePickerItem}>
-                    <Text style={styles.timePickerLabel}>End</Text>
+                    <Text style={[styles.timePickerLabel, { color: colors.textTertiary }]}>End</Text>
                     <TouchableOpacity
-                      style={styles.timePickerButton}
+                      style={[styles.timePickerButton, { backgroundColor: colors.surfaceMedium, borderColor: colors.border }]}
                       onPress={() => setShowEndTimePicker(true)}
                       accessibilityLabel={`End time: ${formatTime12Hour(notifPrefs.quiet_hours_end)}`}
                     >
-                      <Ionicons name="time-outline" size={18} color={Colors.primary} />
-                      <Text style={styles.timePickerValue}>
+                      <Ionicons name="time-outline" size={18} color={colors.primary} />
+                      <Text style={[styles.timePickerValue, { color: colors.textPrimary }]}>
                         {formatTime12Hour(notifPrefs.quiet_hours_end)}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
-                <Text style={styles.quietHoursNote}>
+                <Text style={[styles.quietHoursNote, { color: colors.textTertiary }]}>
                   Notifications sent during quiet hours will be delivered when they end
                 </Text>
               </Animated.View>
@@ -717,10 +824,10 @@ export default function SettingsScreen() {
           </Card>
 
           {/* ================================================================ */}
-          {/* SECTION 4: Coach Interaction */}
+          {/* SECTION 5: Coach Interaction */}
           {/* ================================================================ */}
           <Card style={styles.section}>
-            <SectionHeader icon="chatbubbles-outline" title="Coach Interaction" iconColor={Colors.neonPink} />
+            <SectionHeader icon="chatbubbles-outline" title="Coach Interaction" iconColor={colors.neonPink} colors={colors} />
 
             {/* Frequency Slider */}
             <View style={styles.frequencyContainer}>
@@ -782,58 +889,78 @@ export default function SettingsScreen() {
           </Card>
 
           {/* ================================================================ */}
-          {/* SECTION 5: Health Data (iOS only) */}
+          {/* SECTION 6: Health Data (iOS only) */}
           {/* ================================================================ */}
           {Platform.OS === "ios" && (
             <Card style={styles.section}>
-              <SectionHeader icon="fitness-outline" title="Health Data" iconColor={Colors.primary} />
+              <SectionHeader icon="fitness-outline" title="Health Data" iconColor={colors.primary} colors={colors} />
 
               <ToggleSwitch
-                value={healthKitPermissions === true && (displayPrefs.healthkit_enabled !== false)}
+                value={healthKitEnabled}
                 onValueChange={async (value) => {
                   if (value) {
-                    // Turning ON - request permissions if not yet granted
-                    if (healthKitPermissions !== true) {
-                      await handleRequestHealthKitPermissions();
+                    // Turning ON - request permissions and enable syncing
+                    setRequestingHealthKit(true);
+                    try {
+                      const result = await requestHealthKitPermissions();
+
+                      if (!result.isAvailable) {
+                        // Native module not available - still enable the setting
+                        // so it will work when the app is properly rebuilt
+                        setHealthKitEnabled(true);
+                        updateLocalPref("healthkit_enabled" as any, true);
+                        showToast("HealthKit enabled. Please rebuild the app to connect.", "info");
+                      } else if (result.permissionsGranted) {
+                        setHealthKitEnabled(true);
+                        updateLocalPref("healthkit_enabled" as any, true);
+                        showToast("HealthKit connected successfully!", "success");
+                      } else {
+                        // HealthKit available but permissions denied
+                        // Still enable the setting - user may grant permissions later
+                        setHealthKitEnabled(true);
+                        updateLocalPref("healthkit_enabled" as any, true);
+                        showToast("HealthKit enabled. Please grant permissions in Settings > Privacy > Health.", "info");
+                      }
+                    } catch (error) {
+                      console.error("Error enabling HealthKit:", error);
+                      // Still enable the setting on error
+                      setHealthKitEnabled(true);
+                      updateLocalPref("healthkit_enabled" as any, true);
+                      showToast("HealthKit enabled but may need permissions.", "info");
+                    } finally {
+                      setRequestingHealthKit(false);
                     }
-                    updateLocalPref("healthkit_enabled" as any, true);
-                    useHealthStore.getState().setHealthKitEnabled(true);
                   } else {
                     // Turning OFF - disable syncing without revoking OS permissions
+                    setHealthKitEnabled(false);
                     updateLocalPref("healthkit_enabled" as any, false);
-                    useHealthStore.getState().setHealthKitEnabled(false);
                     showToast("HealthKit disabled. Your data won't be synced.", "info");
                   }
                 }}
                 label="HealthKit Integration"
-                description={
-                  healthKitPermissions === true && (displayPrefs.healthkit_enabled !== false)
-                    ? "Connected - toggle off to stop syncing health data"
-                    : healthKitPermissions === true
-                      ? "Connected but disabled - toggle on to resume syncing"
-                      : "Enable to sync sleep, steps & activity data"
-                }
+                description={getHealthKitDescription()}
+                disabled={requestingHealthKit}
               />
 
-              {healthKitPermissions !== true && (
-                <View style={styles.healthKitBenefits}>
-                  <Text style={styles.healthKitBenefitsTitle}>Benefits of connecting:</Text>
+              {!healthKitEnabled && (
+                <View style={[styles.healthKitBenefits, { backgroundColor: colors.surfaceMedium }]}>
+                  <Text style={[styles.healthKitBenefitsTitle, { color: colors.textPrimary }]}>Benefits of connecting:</Text>
                   <View style={styles.benefitItem}>
-                    <Ionicons name="checkmark" size={16} color={Colors.primary} />
-                    <Text style={styles.benefitText}>Personalized coaching based on your activity</Text>
+                    <Ionicons name="checkmark" size={16} color={colors.primary} />
+                    <Text style={[styles.benefitText, { color: colors.textSecondary }]}>Personalized coaching based on your activity</Text>
                   </View>
                   <View style={styles.benefitItem}>
-                    <Ionicons name="checkmark" size={16} color={Colors.primary} />
-                    <Text style={styles.benefitText}>Sleep insights for better rest</Text>
+                    <Ionicons name="checkmark" size={16} color={colors.primary} />
+                    <Text style={[styles.benefitText, { color: colors.textSecondary }]}>Sleep insights for better rest</Text>
                   </View>
                   <View style={styles.benefitItem}>
-                    <Ionicons name="checkmark" size={16} color={Colors.primary} />
-                    <Text style={styles.benefitText}>Progress tracking and trends</Text>
+                    <Ionicons name="checkmark" size={16} color={colors.primary} />
+                    <Text style={[styles.benefitText, { color: colors.textSecondary }]}>Progress tracking and trends</Text>
                   </View>
                 </View>
               )}
 
-              <Text style={styles.healthKitNote}>
+              <Text style={[styles.healthKitNote, { color: colors.textTertiary, backgroundColor: colors.surfaceMedium }]}>
                 CoreSense uses HealthKit data including steps, sleep, and activity to provide
                 personalized coaching insights. You can revoke access in your device's Health settings at any time.
               </Text>
@@ -902,8 +1029,8 @@ export default function SettingsScreen() {
             activeOpacity={1}
             onPress={() => setShowStartTimePicker(false)}
           >
-            <View style={styles.timePickerModalContent}>
-              <Text style={styles.timePickerModalTitle}>Set Start Time</Text>
+            <View style={[styles.timePickerModalContent, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.timePickerModalTitle, { color: colors.textPrimary }]}>Set Start Time</Text>
               <DateTimePicker
                 value={timeStringToDate(notifPrefs.quiet_hours_start)}
                 mode="time"
@@ -913,10 +1040,10 @@ export default function SettingsScreen() {
                     updateNotifPref("quiet_hours_start", dateToTimeString(date));
                   }
                 }}
-                textColor={Colors.textPrimary}
+                textColor={colors.textPrimary}
               />
               <TouchableOpacity
-                style={styles.timePickerDoneButton}
+                style={[styles.timePickerDoneButton, { backgroundColor: colors.primary }]}
                 onPress={() => setShowStartTimePicker(false)}
               >
                 <Text style={styles.timePickerDoneText}>Done</Text>
@@ -933,8 +1060,8 @@ export default function SettingsScreen() {
             activeOpacity={1}
             onPress={() => setShowEndTimePicker(false)}
           >
-            <View style={styles.timePickerModalContent}>
-              <Text style={styles.timePickerModalTitle}>Set End Time</Text>
+            <View style={[styles.timePickerModalContent, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.timePickerModalTitle, { color: colors.textPrimary }]}>Set End Time</Text>
               <DateTimePicker
                 value={timeStringToDate(notifPrefs.quiet_hours_end)}
                 mode="time"
@@ -944,10 +1071,10 @@ export default function SettingsScreen() {
                     updateNotifPref("quiet_hours_end", dateToTimeString(date));
                   }
                 }}
-                textColor={Colors.textPrimary}
+                textColor={colors.textPrimary}
               />
               <TouchableOpacity
-                style={styles.timePickerDoneButton}
+                style={[styles.timePickerDoneButton, { backgroundColor: colors.primary }]}
                 onPress={() => setShowEndTimePicker(false)}
               >
                 <Text style={styles.timePickerDoneText}>Done</Text>
@@ -970,27 +1097,28 @@ export default function SettingsScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Share Feedback</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Share Feedback</Text>
               <TouchableOpacity
                 onPress={() => setShowFeedbackModal(false)}
                 style={styles.modalCloseButton}
                 accessibilityLabel="Close feedback modal"
                 accessibilityRole="button"
               >
-                <Ionicons name="close" size={24} color={Colors.textPrimary} />
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalLabel}>Category</Text>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Category</Text>
             <View style={styles.categoryRow}>
               {(["bug", "feature", "general"] as const).map((cat) => (
                 <TouchableOpacity
                   key={cat}
                   style={[
                     styles.categoryButton,
-                    feedbackCategory === cat && styles.categoryButtonActive,
+                    { backgroundColor: colors.surfaceMedium },
+                    feedbackCategory === cat && [styles.categoryButtonActive, { borderColor: colors.primary, backgroundColor: colors.background }],
                   ]}
                   onPress={() => setFeedbackCategory(cat)}
                   accessibilityLabel={`Select ${cat} category`}
@@ -1000,12 +1128,13 @@ export default function SettingsScreen() {
                   <Ionicons
                     name={cat === "bug" ? "bug" : cat === "feature" ? "bulb" : "chatbubble"}
                     size={16}
-                    color={feedbackCategory === cat ? Colors.textPrimary : Colors.textTertiary}
+                    color={feedbackCategory === cat ? colors.textPrimary : colors.textTertiary}
                   />
                   <Text
                     style={[
                       styles.categoryText,
-                      feedbackCategory === cat && styles.categoryTextActive,
+                      { color: colors.textTertiary },
+                      feedbackCategory === cat && [styles.categoryTextActive, { color: colors.primary }],
                     ]}
                   >
                     {cat === "bug" ? "Bug" : cat === "feature" ? "Feature" : "General"}
@@ -1014,11 +1143,11 @@ export default function SettingsScreen() {
               ))}
             </View>
 
-            <Text style={styles.modalLabel}>Your feedback</Text>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Your feedback</Text>
             <TextInput
-              style={styles.feedbackInput}
+              style={[styles.feedbackInput, { backgroundColor: colors.surfaceMedium, color: colors.textPrimary }]}
               placeholder="Tell us what's on your mind..."
-              placeholderTextColor={Colors.textTertiary}
+              placeholderTextColor={colors.textTertiary}
               multiline
               numberOfLines={5}
               value={feedbackText}
@@ -1141,6 +1270,52 @@ const styles = StyleSheet.create({
     marginVertical: Spacing.md,
   },
 
+  // Theme Selector
+  themeSelector: {
+    marginBottom: Spacing.md,
+  },
+  themeSelectorLabel: {
+    ...Typography.body,
+    color: Colors.textPrimary,
+    fontWeight: "500",
+    marginBottom: Spacing.md,
+  },
+  themeOptions: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.surfaceMedium,
+    borderRadius: BorderRadius.medium,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  themeOptionActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryMuted || `${Colors.primary}15`,
+  },
+  themeOptionText: {
+    ...Typography.body,
+    color: Colors.textTertiary,
+    fontWeight: "500",
+  },
+  themeOptionTextActive: {
+    color: Colors.primary,
+    fontWeight: "600",
+  },
+  themeNote: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
+    textAlign: "center",
+  },
+
   // Account Link
   accountLink: {
     padding: Spacing.lg,
@@ -1178,6 +1353,27 @@ const styles = StyleSheet.create({
   accountEmail: {
     ...Typography.bodySmall,
     color: Colors.textSecondary,
+  },
+
+  // Test Notification Button
+  testNotifButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.medium,
+    marginTop: Spacing.sm,
+  },
+  testNotifButtonDisabled: {
+    backgroundColor: Colors.surfaceMedium,
+    opacity: 0.6,
+  },
+  testNotifButtonText: {
+    ...Typography.button,
+    color: Colors.textPrimary,
   },
 
   // Quiet Hours

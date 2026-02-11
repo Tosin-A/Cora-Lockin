@@ -104,24 +104,6 @@ export const signUpWithGoogle = async () => {
   return signInWithGoogle();
 };
 
-export const signInWithApple = async () => {
-  try {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "apple",
-    });
-
-    if (error) throw error;
-    return { user: null, error: null }; // OAuth redirects
-  } catch (error: any) {
-    return { user: null, error };
-  }
-};
-
-export const signUpWithApple = async () => {
-  // Same as signInWithApple for OAuth
-  return signInWithApple();
-};
-
 // ============================================================================
 // USER PROFILE FUNCTIONS
 // ============================================================================
@@ -385,6 +367,8 @@ export interface HealthMetric {
   metric_type:
     | "steps"
     | "sleep_duration"
+    | "sleep_start"
+    | "sleep_end"
     | "active_energy"
     | "heart_rate"
     | "distance";

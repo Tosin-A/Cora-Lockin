@@ -4,6 +4,7 @@
  */
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { coresenseApi } from './coresenseApi';
 
 // Notification types matching backend
@@ -52,15 +53,18 @@ export async function registerForPushNotifications(): Promise<string | null> {
   try {
     // Dynamically import expo-notifications to handle cases where it's not available
     const Notifications = await import('expo-notifications').catch(() => null);
-    const Device = await import('expo-device').catch(() => null);
 
-    if (!Notifications || !Device) {
-      console.log('[notificationService] expo-notifications or expo-device not available');
+    if (!Notifications) {
+      console.log('[notificationService] expo-notifications not available');
       return null;
     }
 
+    const isPhysicalDevice = typeof (Constants as { isDevice?: boolean }).isDevice === 'boolean'
+      ? (Constants as { isDevice?: boolean }).isDevice
+      : Platform.OS !== 'web';
+
     // Check if we're on a physical device (required for push notifications)
-    if (!Device.isDevice) {
+    if (!isPhysicalDevice) {
       console.log('[notificationService] Push notifications require a physical device');
       return null;
     }
@@ -80,8 +84,15 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
 
     // Get the Expo push token
+    // Use project ID from app.json extra.eas.projectId
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      console.log('[notificationService] No project ID found in app config');
+      return null;
+    }
+
     const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
+      projectId,
     });
 
     const expoPushToken = tokenData.data;
@@ -151,7 +162,6 @@ export async function setupNotificationHandlers(): Promise<() => void> {
     // Configure notification behavior for iOS
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
         shouldShowBanner: true,

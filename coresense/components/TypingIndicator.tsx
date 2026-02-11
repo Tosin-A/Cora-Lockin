@@ -6,12 +6,14 @@
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet, Animated, Easing } from "react-native";
 import { Colors, Spacing, BorderRadius } from "../constants/theme";
+import { useTheme } from "../contexts/ThemeContext";
 
 interface TypingIndicatorProps {
   show?: boolean;
 }
 
 export default function TypingIndicator({ show = true }: TypingIndicatorProps) {
+  const { colors } = useTheme();
   // Create 3 animated values for the jumping dots
   const animatedValues = useRef([
     new Animated.Value(0),
@@ -57,12 +59,13 @@ export default function TypingIndicator({ show = true }: TypingIndicatorProps) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.messageBubble}>
+      <View style={[styles.messageBubble, { backgroundColor: colors.surface }]}>
         {animatedValues.map((anim, index) => (
           <Animated.View
             key={index}
             style={[
               styles.dot,
+              { backgroundColor: colors.textSecondary },
               {
                 opacity: anim.interpolate({
                   inputRange: [0, 1],

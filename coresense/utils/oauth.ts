@@ -117,105 +117,6 @@ export const startGoogleOAuth = async () => {
 };
 
 /**
- * Start Apple OAuth flow using Supabase's built-in helper
- * This works for both native Apple Sign In (iOS) and web fallback
- */
-export const startAppleOAuth = async () => {
-  try {
-    console.log('[OAuth] Starting Apple OAuth flow...');
-    console.log('[OAuth] Redirect URI:', redirectUri);
-    
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'apple',
-      options: {
-        redirectTo: redirectUri,
-        skipBrowserRedirect: true, // Crucial for mobile apps
-      },
-    });
-
-    if (error) {
-      console.error('[OAuth] Apple OAuth error:', error);
-      return { error, data: null };
-    }
-
-    if (!data.url) {
-      console.error('[OAuth] No OAuth URL returned');
-      return { error: new Error('No OAuth URL returned'), data: null };
-    }
-
-    console.log('[OAuth] Opening browser for Apple sign-in...');
-    
-    // Open the OAuth URL in the device's browser
-    const result = await WebBrowser.openAuthSessionAsync(
-      data.url,
-      redirectUri
-    );
-
-    if (result.type === 'success' && result.url) {
-      console.log('[OAuth] OAuth redirect successful, URL:', result.url);
-
-      const url = new URL(result.url);
-
-      // Check query params first
-      let code = url.searchParams.get('code');
-
-      // If not in query params, check hash fragment (Supabase often uses this)
-      if (!code && url.hash) {
-        const hashParams = new URLSearchParams(url.hash.substring(1));
-        code = hashParams.get('code');
-
-        // If we got access_token directly in hash (implicit flow), handle it
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        if (accessToken) {
-          console.log('[OAuth] Found access token in hash, setting session...');
-          const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken || '',
-          });
-
-          if (sessionError) {
-            console.error('[OAuth] Set session failed:', sessionError);
-            return { error: sessionError, data: null };
-          }
-
-          console.log('[OAuth] Apple OAuth successful via token');
-          return { data: { data: sessionData }, error: null };
-        }
-      }
-
-      if (code) {
-        console.log('[OAuth] Exchanging code for session...');
-        const sessionResult = await supabase.auth.exchangeCodeForSession(code);
-
-        if (sessionResult.error) {
-          console.error('[OAuth] Code exchange failed:', sessionResult.error);
-          return { error: sessionResult.error, data: null };
-        }
-
-        console.log('[OAuth] Apple OAuth successful');
-        return { data: sessionResult, error: null };
-      } else {
-        console.error('[OAuth] No authorization code in redirect URL. Hash:', url.hash, 'Search:', url.search);
-        return { error: new Error('No authorization code received'), data: null };
-      }
-    }
-
-    if (result.type === 'cancel') {
-      console.log('[OAuth] User cancelled Apple OAuth');
-      return { error: new Error('User cancelled'), data: null };
-    }
-
-    console.error('[OAuth] OAuth flow failed:', result);
-    return { error: new Error('OAuth flow failed'), data: null };
-    
-  } catch (error) {
-    console.error('[OAuth] Apple OAuth exception:', error);
-    return { error, data: null };
-  }
-};
-
-/**
  * Legacy Supabase OAuth functions (fallback)
  * These use the old direct OAuth approach
  */
@@ -237,24 +138,6 @@ export const signInWithGoogleLegacy = async () => {
     return { data, error: null };
   } catch (error) {
     console.error('[OAuth] Legacy Google OAuth error:', error);
-    return { error, data: null };
-  }
-};
-
-export const signInWithAppleLegacy = async () => {
-  try {
-    console.log('[OAuth] Using legacy Supabase Apple OAuth...');
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'apple',
-      options: {
-        redirectTo: redirectUri,
-      },
-    });
-
-    if (error) throw error;
-    return { data, error: null };
-  } catch (error) {
-    console.error('[OAuth] Legacy Apple OAuth error:', error);
     return { error, data: null };
   }
 };
@@ -341,8 +224,8 @@ export const handleOAuthError = (error: any): string => {
     return 'OAuth redirect configuration error. Please check app scheme and redirect URLs.';
   }
   
-  if (error?.message?.includes('provider') || error?.message?.includes('google') || error?.message?.includes('apple')) {
-    return 'OAuth provider configuration error. Please check Google/Apple OAuth settings in Supabase.';
+  if (error?.message?.includes('provider') || error?.message?.includes('google')) {
+    return 'OAuth provider configuration error. Please check Google OAuth settings in Supabase.';
   }
   
   // Default error message

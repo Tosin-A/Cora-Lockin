@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Typography, Spacing, BorderRadius } from "../constants/theme";
+import { useTheme } from "../contexts/ThemeContext";
 import type { QuickAction } from "../stores/chatStore";
 
 interface ChatInputProps {
@@ -24,6 +25,7 @@ interface ChatInputProps {
   onQuickActionPress?: (actionId: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  initialMessage?: string;
 }
 
 export default function ChatInput({
@@ -32,10 +34,26 @@ export default function ChatInput({
   onQuickActionPress,
   disabled = false,
   placeholder = "Type a message...",
+  initialMessage = "",
 }: ChatInputProps) {
-  const [message, setMessage] = useState("");
+  const { colors } = useTheme();
+  const [message, setMessage] = useState(initialMessage);
   const [showQuickActions, setShowQuickActions] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const previousInitialMessage = useRef(initialMessage);
+
+  // Set initial message when it changes (e.g., from navigation params)
+  useEffect(() => {
+    // Only update if the initial message has changed (new insight selected)
+    if (initialMessage && initialMessage !== previousInitialMessage.current) {
+      setMessage(initialMessage);
+      previousInitialMessage.current = initialMessage;
+      // Focus input and move cursor to end
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [initialMessage]);
 
   // Auto-focus input on mount
   useEffect(() => {
@@ -65,10 +83,10 @@ export default function ChatInput({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Quick Actions Bar */}
       {showQuickActions && quickActions.length > 0 && (
-        <View style={styles.quickActionsContainer}>
+        <View style={[styles.quickActionsContainer, { backgroundColor: colors.surface }]}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -77,17 +95,17 @@ export default function ChatInput({
             {quickActions.map((action) => (
               <TouchableOpacity
                 key={action.id}
-                style={styles.quickActionButton}
+                style={[styles.quickActionButton, { backgroundColor: colors.surfaceMedium }]}
                 onPress={() => handleQuickActionPress(action.id)}
                 disabled={disabled}
               >
                 <Ionicons
                   name={action.icon as any}
                   size={16}
-                  color={Colors.textPrimary}
+                  color={colors.textPrimary}
                   style={styles.quickActionIcon}
                 />
-                <Text style={styles.quickActionText}>{action.title}</Text>
+                <Text style={[styles.quickActionText, { color: colors.textPrimary }]}>{action.title}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -97,14 +115,14 @@ export default function ChatInput({
       {/* Main Input Row */}
       <View style={styles.inputRow}>
         {/* Text Input */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <TextInput
             ref={inputRef}
-            style={styles.textInput}
+            style={[styles.textInput, { color: colors.textPrimary }]}
             value={message}
             onChangeText={setMessage}
             placeholder={placeholder}
-            placeholderTextColor={Colors.textTertiary}
+            placeholderTextColor={colors.textTertiary}
             multiline
             maxLength={500}
             editable={!disabled}
@@ -114,7 +132,7 @@ export default function ChatInput({
 
           {/* Character Counter */}
           {message.length > 400 && (
-            <Text style={styles.characterCounter}>{500 - message.length}</Text>
+            <Text style={[styles.characterCounter, { color: colors.textTertiary }]}>{500 - message.length}</Text>
           )}
         </View>
 
@@ -122,7 +140,8 @@ export default function ChatInput({
         <TouchableOpacity
           style={[
             styles.sendButton,
-            (!message.trim() || disabled) && styles.sendButtonDisabled,
+            { backgroundColor: colors.primary },
+            (!message.trim() || disabled) && [styles.sendButtonDisabled, { backgroundColor: colors.surfaceMedium }],
           ]}
           onPress={handleSend}
           disabled={!message.trim() || disabled}
@@ -132,8 +151,8 @@ export default function ChatInput({
             size={20}
             color={
               message.trim() && !disabled
-                ? Colors.textPrimary
-                : Colors.textTertiary
+                ? '#FFFFFF'
+                : colors.textTertiary
             }
           />
         </TouchableOpacity>

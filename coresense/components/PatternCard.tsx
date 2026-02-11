@@ -24,22 +24,23 @@ interface PatternCardProps {
   onSave?: () => void;
 }
 
+// Unified purple-based category colors
 const categoryConfig = {
   sleep: {
     icon: 'moon',
-    color: '#7B68EE',
+    color: '#8B5CF6',
   },
   mood: {
     icon: 'heart',
-    color: '#FF6B9D',
+    color: '#C084FC',
   },
   productivity: {
     icon: 'flash',
-    color: '#FFD93D',
+    color: '#A78BFA',
   },
   habits: {
     icon: 'checkmark-circle',
-    color: '#6BCB77',
+    color: '#7C3AED',
   },
 } as const;
 
@@ -69,7 +70,7 @@ export default function PatternCard({
   const maxPoint = Math.max(...dataPoints, 1);
   const normalizedPoints = dataPoints.map((p) => (p / maxPoint) * 100);
 
-  const trendColor = trend === 'up' ? Colors.success : trend === 'down' ? Colors.error : Colors.warning;
+  const trendColor = trend === 'up' ? Colors.success : trend === 'down' ? Colors.error : Colors.primary;
   const trendIcon = trend === 'up' ? 'arrow-up' : trend === 'down' ? 'arrow-down' : 'remove';
 
   return (
@@ -136,11 +137,17 @@ export default function PatternCard({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.medium,
+    borderRadius: BorderRadius.xl,
     borderWidth: 1,
     borderColor: Colors.borderPurple,
     padding: Spacing.md,
     marginBottom: Spacing.md,
+    // Subtle purple glow shadow
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   header: {
     flexDirection: 'row',

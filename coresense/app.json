@@ -14,14 +14,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.coresense.app",
-      "newArchEnabled": false,
+      "newArchEnabled": true,
       "infoPlist": {
         "NSHealthShareUsageDescription": "CoreSense needs access to your health data to provide personalized coaching insights.",
-        "NSHealthUpdateUsageDescription": "CoreSense needs access to update your health data for tracking purposes."
+        "NSHealthUpdateUsageDescription": "CoreSense needs access to update your health data for tracking purposes.",
+        "UIBackgroundModes": ["remote-notification"]
       },
       "entitlements": {
         "com.apple.developer.healthkit": true,
-        "com.apple.developer.healthkit.access": []
+        "com.apple.developer.healthkit.access": [],
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -45,8 +47,14 @@
         "expo-build-properties",
         {
           "ios": {
-            "newArchEnabled": false
+            "newArchEnabled": true
           }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#9333EA"
         }
       ]
     ],

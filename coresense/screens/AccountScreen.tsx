@@ -22,6 +22,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { Card } from '../components/Card';
 import { PurpleButton } from '../components/PurpleButton';
 import { useAuthStore } from '../stores/authStore';
@@ -33,6 +34,7 @@ import { User } from '../types';
 export default function AccountScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const { user, signOut } = useAuthStore();
   const { profile: storeProfile, fetchProfile } = useUserStore();
 
@@ -191,20 +193,20 @@ export default function AccountScreen() {
   // Loading state
   if (loading) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading profile...</Text>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading profile...</Text>
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        style={styles.container}
+        style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: Math.max(insets.bottom, Spacing.lg) + 100 },
@@ -219,58 +221,58 @@ export default function AccountScreen() {
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.title}>Account</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Account</Text>
           <View style={styles.placeholder} />
         </View>
 
         {/* Error Message */}
         {error && (
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={20} color={Colors.error} />
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={[styles.errorContainer, { backgroundColor: colors.surface }]}>
+            <Ionicons name="alert-circle-outline" size={20} color={colors.error} />
+            <Text style={[styles.errorText, { color: colors.textSecondary }]}>{error}</Text>
             <TouchableOpacity onPress={fetchData}>
-              <Text style={styles.retryText}>Retry</Text>
+              <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* Profile Avatar */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
+          <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.avatarText, { color: '#FFFFFF' }]}>
               {username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
             </Text>
           </View>
-          <Text style={styles.avatarEmail}>{user?.email}</Text>
+          <Text style={[styles.avatarEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
         </View>
 
         {/* Profile Edit Section */}
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Profile Information</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Profile Information</Text>
 
           {/* Username */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Username</Text>
-            <View style={styles.inputContainer}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Username</Text>
+            <View style={[styles.inputContainer, { backgroundColor: colors.surfaceMedium, borderColor: colors.border }]}>
               <Ionicons
                 name="person-outline"
                 size={20}
-                color={Colors.textTertiary}
+                color={colors.textTertiary}
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.textPrimary }]}
                 value={username}
                 onChangeText={setUsername}
                 placeholder="Enter your username"
-                placeholderTextColor={Colors.textTertiary}
+                placeholderTextColor={colors.textTertiary}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
             </View>
-            <Text style={styles.inputHint}>
+            <Text style={[styles.inputHint, { color: colors.textTertiary }]}>
               This will be displayed as your identifier in the app.
             </Text>
           </View>
@@ -290,14 +292,14 @@ export default function AccountScreen() {
 
         {/* Account Info */}
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Details</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Email</Text>
-            <Text style={styles.infoValue}>{user?.email}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Account Details</Text>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Email</Text>
+            <Text style={[styles.infoValue, { color: colors.textPrimary }]}>{user?.email}</Text>
           </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Member since</Text>
-            <Text style={styles.infoValue}>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Member since</Text>
+            <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
               {profile?.created_at
                 ? new Date(profile.created_at).toLocaleDateString()
                 : 'Unknown'}
@@ -307,17 +309,17 @@ export default function AccountScreen() {
 
         {/* Actions */}
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Actions</Text>
-          <TouchableOpacity style={styles.actionItem} onPress={handleSignOut}>
-            <Ionicons name="log-out-outline" size={20} color={Colors.textPrimary} />
-            <Text style={styles.actionText}>Sign Out</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Actions</Text>
+          <TouchableOpacity style={[styles.actionItem, { borderBottomColor: colors.border }]} onPress={handleSignOut}>
+            <Ionicons name="log-out-outline" size={20} color={colors.textPrimary} />
+            <Text style={[styles.actionText, { color: colors.textPrimary }]}>Sign Out</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionItem, styles.actionItemDanger]}
             onPress={handleDeleteAccount}
           >
-            <Ionicons name="trash-outline" size={20} color={Colors.error} />
-            <Text style={[styles.actionText, styles.actionTextDanger]}>
+            <Ionicons name="trash-outline" size={20} color={colors.error} />
+            <Text style={[styles.actionText, { color: colors.error }]}>
               Delete Account
             </Text>
           </TouchableOpacity>

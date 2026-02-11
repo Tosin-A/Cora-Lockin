@@ -1,17 +1,15 @@
 /**
  * Insights Screen
- * Commitment-pattern-focused insights with AI coach interpretation.
- * Shows meaningful patterns from commitment data, not just raw stats.
+ * Premium dark SaaS aesthetic - unified purple accent system
  *
  * Design Principles:
- * - Coach commentary is the LARGEST text on screen
- * - Cards feel physical (shadows, padding, rounded corners)
- * - Color-coded by type: behavioral (blue), progress (green), risk (amber)
- * - Max 5 active insights at a time
- * - Fail gracefully, never crash
+ * - Sticky header with subtle blur
+ * - Cards with purple borders and soft glows
+ * - Touch targets minimum 44pt
+ * - Clean, minimal, modern design
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,25 +22,31 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
+import {
+  Colors,
+  Spacing,
+  Typography,
+  BorderRadius,
+  Shadows,
+  Layout,
+  TouchTarget,
+} from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { Card } from '../components';
 import { CoachCommentary, PatternCard } from '../components/insights';
-import { QuickLogModal } from '../components/metrics';
 import { useAuthStore } from '../stores/authStore';
 import { useInsightsStore } from '../stores/insightsStore';
-import { useMetricsStore } from '../stores/metricsStore';
 import { useHealthStore } from '../stores/healthStore';
 import {
   InsightType,
   PatternType,
-  InsightsScreenData,
   InsightData,
 } from '../types/insights';
-import type { MetricInput } from '../types/metrics';
 
 export default function InsightsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { colors } = useTheme();
   const { user } = useAuthStore();
 
   // Insights store
@@ -55,14 +59,10 @@ export default function InsightsScreen() {
     recordReaction,
   } = useInsightsStore();
 
-  // Metrics store
-  const { logBatchMetrics } = useMetricsStore();
-
   // Health store - for syncing HealthKit data on refresh
   const { syncToSupabase, permissionsGranted } = useHealthStore();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [showQuickLog, setShowQuickLog] = useState(false);
 
   // Sync HealthKit data and fetch insights on focus
   useFocusEffect(
@@ -93,14 +93,8 @@ export default function InsightsScreen() {
     }
   };
 
-  // Handle quick log submission
-  const handleQuickLogSubmit = async (metrics: MetricInput[]): Promise<boolean> => {
-    return await logBatchMetrics(metrics);
-  };
-
   // Handle asking coach about an insight
   const handleAskCoach = (insight: InsightData) => {
-    // Navigate to coach chat with context about the insight
     navigation.navigate('Coach', {
       context: {
         type: 'insight',
@@ -123,12 +117,23 @@ export default function InsightsScreen() {
     await dismissInsight(insightId);
   };
 
+  // Sticky Header Component
+  const StickyHeader = ({ subtitle }: { subtitle: string }) => (
+    <View style={[styles.stickyHeader, { paddingTop: insets.top + Spacing.sm, backgroundColor: colors.background }]}>
+      <View style={[StyleSheet.absoluteFill, styles.headerBg, { backgroundColor: colors.background }]} />
+      <View style={styles.headerContent}>
+        <Text style={[styles.title, { color: colors.textPrimary }]}>Insights</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
+      </View>
+    </View>
+  );
+
   // Loading state
   if (loading && !healthInsights) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Analyzing your health data...</Text>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Analyzing your health data...</Text>
       </View>
     );
   }
@@ -136,53 +141,42 @@ export default function InsightsScreen() {
   // Error state
   if (error && !healthInsights) {
     return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: Math.max(insets.top + Spacing.md, Spacing.xl),
-            paddingBottom: Math.max(insets.bottom, Spacing.lg) + 100,
-          },
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors.primary}
-          />
-        }
-      >
-        {/* Header with Quick Log Button */}
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Insights</Text>
-            <Text style={styles.subtitle}>Pull down to retry</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.quickLogButton}
-            onPress={() => setShowQuickLog(true)}
-            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-          >
-            <Ionicons name="add-circle" size={32} color={Colors.primary} />
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <StickyHeader subtitle="Pull to retry" />
 
-        <Card style={styles.errorCard}>
-          <View style={styles.errorContent}>
-            <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
-            <Text style={styles.errorTitle}>Something went wrong</Text>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        </Card>
-
-        {/* Quick Log Modal */}
-        <QuickLogModal
-          visible={showQuickLog}
-          onClose={() => setShowQuickLog(false)}
-          onSubmit={handleQuickLogSubmit}
-        />
-      </ScrollView>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: insets.top + 80 },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              progressViewOffset={insets.top + 80}
+            />
+          }
+        >
+          <Card variant="elevated" style={styles.stateCard}>
+            <View style={styles.stateContent}>
+              <View style={[styles.stateIconContainer, styles.errorIconBg]}>
+                <Ionicons name="alert-circle-outline" size={32} color={colors.error} />
+              </View>
+              <Text style={styles.stateTitle}>Something went wrong</Text>
+              <Text style={styles.stateText}>{error}</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={handleRefresh}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.retryButtonText}>Try Again</Text>
+              </TouchableOpacity>
+            </View>
+          </Card>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -192,77 +186,60 @@ export default function InsightsScreen() {
     const hasNoHealthData = daysRemaining >= 6;
 
     return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: Math.max(insets.top + Spacing.md, Spacing.xl),
-            paddingBottom: Math.max(insets.bottom, Spacing.lg) + 100,
-          },
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors.primary}
-          />
-        }
-      >
-        {/* Header with Quick Log Button */}
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Insights</Text>
-            <Text style={styles.subtitle}>Health-first insights</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.quickLogButton}
-            onPress={() => setShowQuickLog(true)}
-            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-          >
-            <Ionicons name="add-circle" size={32} color={Colors.primary} />
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <StickyHeader subtitle="Health-first insights" />
 
-        {/* Patterns Empty State */}
-        <Card style={styles.emptyCard}>
-          <View style={styles.emptyContent}>
-            <Ionicons
-              name={hasNoHealthData ? 'leaf-outline' : 'pulse-outline'}
-              size={64}
-              color={Colors.textTertiary}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: insets.top + 80 },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              progressViewOffset={insets.top + 80}
             />
-            <Text style={styles.emptyTitle}>
-              {hasNoHealthData ? 'Waiting for health data' : 'Analyzing your health data...'}
-            </Text>
-            <Text style={styles.emptyText}>
-              {hasNoHealthData
-                ? "Sync your Health data to get sleep and activity insights."
-                : "Give me a few seconds. I'm looking at your sleep and activity from the last week."}
-            </Text>
-            <View style={styles.emptyProgress}>
-              <View style={styles.emptyProgressBar}>
-                <View
-                  style={[
-                    styles.emptyProgressFill,
-                    { width: `${Math.max(20, 100 - daysRemaining * 20)}%` },
-                  ]}
+          }
+        >
+          <Card variant="elevated" style={styles.stateCard}>
+            <View style={styles.stateContent}>
+              <View style={[styles.stateIconContainer, styles.emptyIconBg, { backgroundColor: colors.primaryMuted }]}>
+                <Ionicons
+                  name={hasNoHealthData ? 'leaf-outline' : 'pulse-outline'}
+                  size={32}
+                  color={colors.primary}
                 />
               </View>
-              <Text style={styles.emptyProgressText}>
-                {hasNoHealthData ? 'Open Health tab to sync' : '— Coach'}
+              <Text style={styles.stateTitle}>
+                {hasNoHealthData ? 'Waiting for health data' : 'Analyzing your patterns'}
               </Text>
-            </View>
-          </View>
-        </Card>
+              <Text style={styles.stateText}>
+                {hasNoHealthData
+                  ? "Sync your Health data to unlock sleep and activity insights."
+                  : "I'm looking at your sleep and activity from the last week. This usually takes a moment."}
+              </Text>
 
-        {/* Quick Log Modal */}
-        <QuickLogModal
-          visible={showQuickLog}
-          onClose={() => setShowQuickLog(false)}
-          onSubmit={handleQuickLogSubmit}
-        />
-      </ScrollView>
+              {/* Progress indicator */}
+              <View style={styles.progressContainer}>
+                <View style={styles.progressBar}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.max(20, 100 - daysRemaining * 20)}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressLabel}>
+                  {hasNoHealthData ? 'Open Health tab to sync' : 'Almost ready...'}
+                </Text>
+              </View>
+            </View>
+          </Card>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -270,107 +247,81 @@ export default function InsightsScreen() {
   const patterns = healthInsights.patterns || [];
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[
-        styles.content,
-        {
-          paddingTop: Math.max(insets.top + Spacing.md, Spacing.xl),
-          paddingBottom: Math.max(insets.bottom, Spacing.lg) + 100,
-        },
-      ]}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={Colors.primary}
-        />
-      }
-    >
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>Insights</Text>
-          <Text style={styles.subtitle}>Your health patterns</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.quickLogButton}
-          onPress={() => setShowQuickLog(true)}
-          hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-        >
-          <Ionicons name="add-circle" size={32} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StickyHeader subtitle="Your health patterns" />
 
-      {/* Coach Summary */}
-      {healthInsights.coach_summary && (
-        <CoachCommentary
-          commentary={healthInsights.coach_summary}
-        />
-      )}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + 80,
+            paddingBottom: Math.max(insets.bottom, 16) + 100,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={Colors.primary}
+            progressViewOffset={insets.top + 80}
+          />
+        }
+      >
+        {/* Coach Summary */}
+        {healthInsights.coach_summary && (
+          <CoachCommentary
+            commentary={healthInsights.coach_summary}
+          />
+        )}
 
-      {/* Pattern Cards */}
-      {patterns.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>What I Noticed</Text>
+        {/* Pattern Cards */}
+        {patterns.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>What I Noticed</Text>
 
-          {patterns.map((pattern) => (
-            <PatternCard
-              key={pattern.id}
-              id={pattern.id}
-              type={pattern.type as InsightType}
-              title={pattern.title}
-              coachCommentary={pattern.coach_commentary}
-              evidence={{
-                type: pattern.evidence.type as PatternType,
-                labels: pattern.evidence.labels,
-                values: pattern.evidence.values,
-                highlight_index: pattern.evidence.highlight_index,
-                trend_direction: pattern.evidence.trend_direction,
-                trend_value: pattern.evidence.trend_value,
-              }}
-              actionText={pattern.action_text}
-              actionSteps={pattern.action_steps}
-              isNew={pattern.is_new}
-              onAskCoach={() => handleAskCoach(pattern as InsightData)}
-              onHelpful={() => handleHelpful(pattern.id)}
-              onDismiss={() => handleDismiss(pattern.id)}
-            />
-          ))}
-        </View>
-      )}
-
-      {/* No patterns but has enough data */}
-      {patterns.length === 0 && healthInsights.has_enough_data && (
-        <Card style={styles.emptyCard}>
-          <View style={styles.emptyContent}>
-            <Ionicons name="checkmark-circle-outline" size={48} color={Colors.success} />
-            <Text style={styles.emptyTitle}>All Caught Up</Text>
-            <Text style={styles.emptyText}>
-              No new patterns to report right now. I'll keep scanning your health data.
-            </Text>
+            {patterns.map((pattern) => (
+              <PatternCard
+                key={pattern.id}
+                id={pattern.id}
+                type={pattern.type as InsightType}
+                title={pattern.title}
+                coachCommentary={pattern.coach_commentary}
+                evidence={{
+                  type: pattern.evidence.type as PatternType,
+                  labels: pattern.evidence.labels,
+                  values: pattern.evidence.values,
+                  highlight_index: pattern.evidence.highlight_index ?? undefined,
+                  trend_direction: (pattern.evidence.trend_direction as 'up' | 'down' | 'stable') || 'stable',
+                  trend_value: pattern.evidence.trend_value ?? undefined,
+                }}
+                actionText={pattern.action_text ?? undefined}
+                isNew={pattern.is_new}
+                onAskCoach={() => handleAskCoach(pattern as InsightData)}
+                onHelpful={() => handleHelpful(pattern.id)}
+                onDismiss={() => handleDismiss(pattern.id)}
+              />
+            ))}
           </View>
-        </Card>
-      )}
+        )}
 
-      {/* Swipe Tip */}
-      {patterns.length > 0 && (
-        <View style={styles.tip}>
-          <Ionicons name="information-circle-outline" size={16} color={Colors.textTertiary} />
-          <Text style={styles.tipText}>
-            Swipe cards: right = helpful, left = dismiss
-          </Text>
-        </View>
-      )}
-
-      {/* Quick Log Modal */}
-      <QuickLogModal
-        visible={showQuickLog}
-        onClose={() => setShowQuickLog(false)}
-        onSubmit={handleQuickLogSubmit}
-      />
-    </ScrollView>
+        {/* No patterns but has enough data */}
+        {patterns.length === 0 && healthInsights.has_enough_data && (
+          <Card variant="elevated" style={styles.stateCard}>
+            <View style={styles.stateContent}>
+              <View style={[styles.stateIconContainer, styles.successIconBg]}>
+                <Ionicons name="checkmark-circle-outline" size={32} color={Colors.success} />
+              </View>
+              <Text style={styles.stateTitle}>All Caught Up</Text>
+              <Text style={styles.stateText}>
+                No new patterns to report right now. I'll keep scanning your health data.
+              </Text>
+            </View>
+          </Card>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -379,120 +330,134 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  scrollView: {
+    flex: 1,
+  },
   centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
   },
   content: {
-    padding: Spacing.lg,
+    padding: Layout.screenPadding,
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
+
+  // Sticky Header
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    paddingHorizontal: Layout.screenPadding,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 0.5,
+    borderBottomColor: Colors.border,
   },
-  headerText: {
-    flex: 1,
+  headerBg: {
+    backgroundColor: 'rgba(248, 248, 250, 0.97)',
   },
-  header: {
-    marginBottom: Spacing.xl,
+  headerContent: {
+    zIndex: 1,
   },
   title: {
     ...Typography.h1,
     color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
   },
   subtitle: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
+    ...Typography.bodySmall,
+    color: Colors.textTertiary,
+    marginTop: 2,
   },
-  quickLogButton: {
-    padding: Spacing.xs,
-  },
+
+  // Section
   section: {
-    marginBottom: Spacing.xl,
+    marginBottom: Layout.sectionGap,
   },
   sectionTitle: {
     ...Typography.h2,
     color: Colors.textPrimary,
     marginBottom: Spacing.lg,
   },
+
+  // Loading
   loadingText: {
     ...Typography.body,
     color: Colors.textSecondary,
-    marginTop: Spacing.md,
+    marginTop: Spacing.lg,
   },
-  // Error state
-  errorCard: {
-    padding: Spacing.xl,
+
+  // State Cards (Error, Empty, Success)
+  stateCard: {
+    padding: Spacing.xxl,
   },
-  errorContent: {
+  stateContent: {
     alignItems: 'center',
-    gap: Spacing.md,
   },
-  errorTitle: {
+  stateIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+  },
+  emptyIconBg: {
+    backgroundColor: Colors.primaryMuted,
+  },
+  errorIconBg: {
+    backgroundColor: Colors.errorTint,
+  },
+  successIconBg: {
+    backgroundColor: Colors.successTint,
+  },
+  stateTitle: {
     ...Typography.h2,
     color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
   },
-  errorText: {
+  stateText: {
     ...Typography.body,
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
+    maxWidth: 280,
   },
-  // Empty state
-  emptyCard: {
-    padding: Spacing.xl,
-    marginBottom: Spacing.xl,
+  retryButton: {
+    marginTop: Spacing.xl,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    minHeight: TouchTarget.minimum,
+    justifyContent: 'center',
   },
-  emptyContent: {
-    alignItems: 'center',
-    gap: Spacing.md,
+  retryButtonText: {
+    ...Typography.button,
+    color: '#FFFFFF',
   },
-  emptyTitle: {
-    ...Typography.h2,
-    color: Colors.textPrimary,
-  },
-  emptyText: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  emptyProgress: {
+
+  // Progress
+  progressContainer: {
     width: '100%',
-    marginTop: Spacing.md,
+    marginTop: Spacing.xl,
     alignItems: 'center',
   },
-  emptyProgressBar: {
+  progressBar: {
     width: '80%',
-    height: 6,
-    backgroundColor: Colors.glassBorder,
-    borderRadius: 3,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: 2,
     overflow: 'hidden',
   },
-  emptyProgressFill: {
+  progressFill: {
     height: '100%',
     backgroundColor: Colors.primary,
-    borderRadius: 3,
+    borderRadius: 2,
   },
-  emptyProgressText: {
+  progressLabel: {
     ...Typography.caption,
     color: Colors.textTertiary,
     marginTop: Spacing.sm,
-  },
-  // Tip
-  tip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: Spacing.md,
-    gap: Spacing.xs,
-  },
-  tipText: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
   },
 });

@@ -20,31 +20,32 @@ interface InsightCardProps {
   priority?: 'high' | 'medium' | 'low';
 }
 
+// Unified purple-based category colors
 const categoryConfig = {
   sleep: {
     icon: 'moon',
-    color: '#7B68EE',
-    bgColor: 'rgba(123, 104, 238, 0.1)',
+    color: '#8B5CF6',
+    bgColor: 'rgba(139, 92, 246, 0.12)',
   },
   activity: {
     icon: 'walk',
-    color: '#00FF88',
-    bgColor: 'rgba(0, 255, 136, 0.1)',
+    color: '#A78BFA',
+    bgColor: 'rgba(167, 139, 250, 0.12)',
   },
   nutrition: {
     icon: 'nutrition',
-    color: '#FFB800',
-    bgColor: 'rgba(255, 184, 0, 0.1)',
+    color: '#7C3AED',
+    bgColor: 'rgba(124, 58, 237, 0.12)',
   },
   mental: {
     icon: 'heart',
-    color: '#FF6B9D',
-    bgColor: 'rgba(255, 107, 157, 0.1)',
+    color: '#C084FC',
+    bgColor: 'rgba(192, 132, 252, 0.12)',
   },
   hydration: {
     icon: 'water',
-    color: '#00D4FF',
-    bgColor: 'rgba(0, 212, 255, 0.1)',
+    color: '#8B5CF6',
+    bgColor: 'rgba(139, 92, 246, 0.12)',
   },
 } as const;
 
@@ -80,10 +81,7 @@ export function InsightCard({
 
   return (
     <Card
-      style={[
-        styles.card,
-        isHighPriority && styles.highPriorityCard,
-      ]}
+      style={isHighPriority ? [styles.card, styles.highPriorityCard] : styles.card}
       onPress={onSave}
     >
       <View style={styles.header}>
@@ -128,8 +126,8 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
   },
   highPriorityCard: {
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.warning,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
   },
   header: {
     flexDirection: 'row',

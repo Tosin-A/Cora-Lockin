@@ -118,14 +118,33 @@ export const useTodosStore = create<TodosStore>()(
       updateTodoStatus: async (todoId: string, status: Todo['status']) => {
         set({ error: null });
 
+        // Optimistic update - immediately update local state for responsive UI
+        const previousTodos = get().todos;
+        const now = new Date().toISOString();
+        set((state) => ({
+          todos: state.todos.map((todo) =>
+            todo.id === todoId
+              ? {
+                  ...todo,
+                  status,
+                  completed_at: status === 'completed' ? now : undefined,
+                  updated_at: now,
+                }
+              : todo
+          ),
+        }));
+
         try {
           const { data, error } = await coresenseApi.updateTodoStatus(todoId, status);
 
           if (error) {
+            // Revert optimistic update on error
+            set({ todos: previousTodos });
             throw new Error(error);
           }
 
           if (data) {
+            // Update with server response to ensure consistency
             set((state) => ({
               todos: state.todos.map((todo) =>
                 todo.id === todoId ? { ...todo, ...data } : todo

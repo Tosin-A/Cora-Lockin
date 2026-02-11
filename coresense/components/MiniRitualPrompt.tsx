@@ -52,7 +52,17 @@ export default function MiniRitualPrompt({
     }
   }, [completed]);
 
-  if (completed && fadeAnim._value === 0) {
+  // Don't render after fade out animation
+  const [hidden, setHidden] = React.useState(false);
+
+  React.useEffect(() => {
+    if (completed) {
+      const timer = setTimeout(() => setHidden(true), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [completed]);
+
+  if (hidden) {
     return null;
   }
 

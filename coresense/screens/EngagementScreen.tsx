@@ -59,11 +59,11 @@ export default function EngagementScreen() {
     setError(null);
 
     try {
-      const [promptRes, actionsRes, commitmentsRes, streaksRes] = await Promise.all([
+      const [promptRes, actionsRes, commitmentsRes, streakRes] = await Promise.all([
         coresenseApi.getDailyPrompt(),
         coresenseApi.getSuggestedActions(),
         coresenseApi.getCommitments(),
-        coresenseApi.getStreaks(),
+        coresenseApi.getStreak(),
       ]);
 
       if (promptRes.data) {
@@ -84,8 +84,8 @@ export default function EngagementScreen() {
         setCommitments(commitmentsRes.data);
       }
 
-      if (streaksRes.data) {
-        setCurrentStreak(streaksRes.data.check_in?.current || 0);
+      if (streakRes.data) {
+        setCurrentStreak(streakRes.data.currentStreak || 0);
       }
     } catch (err: any) {
       // Silently handle network errors - app works offline
@@ -468,8 +468,6 @@ const styles = StyleSheet.create({
   // Prompt styles
   promptCard: {
     marginBottom: Spacing.xl,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.accent,
   },
   promptHeader: {
     flexDirection: 'row',

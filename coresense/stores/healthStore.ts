@@ -36,6 +36,7 @@ interface HealthState {
   isAvailable: boolean;
   permissionsGranted: boolean;
   isInitializing: boolean;
+  healthKitEnabled: boolean;
 
   // Today's data
   todayData: HealthData | null;
@@ -57,6 +58,7 @@ interface HealthState {
   // Actions
   initialize: () => Promise<void>;
   requestPermissions: () => Promise<boolean>;
+  setHealthKitEnabled: (enabled: boolean) => void;
   refreshTodayData: () => Promise<void>;
   refreshWeeklyData: () => Promise<void>;
   syncToSupabase: (userId: string) => Promise<void>;
@@ -68,6 +70,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   isAvailable: false,
   permissionsGranted: false,
   isInitializing: false,
+  healthKitEnabled: true,
   todayData: null,
   weeklySteps: [],
   weeklySleep: [],
@@ -79,9 +82,31 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   lastSyncedAt: null,
 
   /**
+   * Set whether HealthKit integration is enabled by user preference
+   */
+  setHealthKitEnabled: (enabled: boolean) => {
+    console.log('[HealthStore] HealthKit enabled set to:', enabled);
+    set({ healthKitEnabled: enabled });
+  },
+
+  /**
    * Initialize HealthKit and check permissions
    */
   initialize: async () => {
+    console.log('[HealthStore] initialize() called');
+    console.log('[HealthStore] Current state:', {
+      healthKitEnabled: get().healthKitEnabled,
+      isInitializing: get().isInitializing,
+      isAvailable: get().isAvailable,
+      permissionsGranted: get().permissionsGranted,
+    });
+
+    // Check if user has disabled HealthKit via preferences
+    if (!get().healthKitEnabled) {
+      console.log('[HealthStore] HealthKit disabled by user preference, skipping initialization');
+      return;
+    }
+
     // Prevent multiple simultaneous initializations
     if (get().isInitializing) {
       console.log('[HealthStore] Already initializing, skipping...');
@@ -184,24 +209,54 @@ export const useHealthStore = create<HealthState>((set, get) => ({
    * Sync health data to Supabase
    */
   syncToSupabase: async (userId: string) => {
+    console.log('[HealthStore] syncToSupabase() called for user:', userId);
+    console.log('[HealthStore] Sync pre-check state:', {
+      healthKitEnabled: get().healthKitEnabled,
+      permissionsGranted: get().permissionsGranted,
+      isAvailable: get().isAvailable,
+      isSyncing: get().isSyncing,
+    });
+
+    if (!get().healthKitEnabled) {
+      console.log('[HealthStore] HealthKit disabled by user preference, skipping sync');
+      return;
+    }
     if (!get().permissionsGranted) {
-      console.warn('Cannot sync: HealthKit permissions not granted');
+      console.warn('[HealthStore] Cannot sync: HealthKit permissions not granted');
       return;
     }
 
     set({ isSyncing: true });
 
     try {
+      console.log('[HealthStore] Starting sync to Supabase...');
+
       // Update sync status to 'syncing'
       await updateHealthSyncStatus(userId, { sync_status: 'syncing' });
 
+      // IMPORTANT: Always fetch fresh data from HealthKit (not cached)
+      console.log('[HealthStore] Fetching fresh data from HealthKit...');
+
       // Get today's data
       const todayData = await getTodayHealthData();
+      console.log('[HealthStore] Today data from HealthKit:', {
+        steps: todayData.steps,
+        sleepHours: todayData.sleepHours,
+        activeEnergy: todayData.activeEnergy,
+        heartRate: todayData.heartRate,
+      });
 
       // Get weekly data for last 7 days
       const endDate = new Date();
       const startDate = subDays(endDate, 7);
+      console.log('[HealthStore] Fetching weekly data from', startDate.toISOString(), 'to', endDate.toISOString());
       const weeklyData = await getWeeklyHealthData();
+      console.log('[HealthStore] Weekly data from HealthKit:', {
+        stepsCount: weeklyData.steps.length,
+        sleepCount: weeklyData.sleep.length,
+        steps: weeklyData.steps.map(d => ({ date: format(d.date, 'yyyy-MM-dd'), steps: d.steps })),
+        sleep: weeklyData.sleep.map(d => ({ date: format(d.date, 'yyyy-MM-dd'), hours: d.hours })),
+      });
 
       // Prepare metrics for sync
       const metrics: Array<Omit<HealthMetric, 'id' | 'user_id'>> = [];
@@ -232,6 +287,15 @@ export const useHealthStore = create<HealthState>((set, get) => ({
 
       // Get detailed sleep data with bedtime and wake time
       const detailedSleep = await getDetailedDailySleep(startDate, endDate);
+      console.log('[HealthStore] Detailed sleep data from HealthKit:', {
+        count: detailedSleep.length,
+        data: detailedSleep.map(d => ({
+          date: format(d.date, 'yyyy-MM-dd'),
+          hours: d.durationHours.toFixed(2),
+          bedtime: d.bedtime?.toISOString(),
+          wakeTime: d.wakeTime?.toISOString(),
+        })),
+      });
 
       // Add detailed sleep data (duration, bedtime, wake time)
       detailedSleep.forEach((sleepData) => {
@@ -364,8 +428,14 @@ export const useHealthStore = create<HealthState>((set, get) => ({
         mergedMetrics.set(key, metric);
       });
 
+      // Filter out zero values, but allow 0 for time-based metrics (sleep_start/sleep_end)
+      // where 0 represents midnight (00:00) which is a valid time
       const payload = Array.from(mergedMetrics.values()).filter(
-        (metric) => metric.value > 0
+        (metric) =>
+          metric.value > 0 ||
+          (metric.value === 0 &&
+            (metric.metric_type === 'sleep_start' ||
+              metric.metric_type === 'sleep_end'))
       );
       if (payload.length === 0) {
         console.warn('[HealthStore] No non-zero health metrics to sync');
@@ -377,12 +447,21 @@ export const useHealthStore = create<HealthState>((set, get) => ({
         return;
       }
 
+      // Log the final payload
+      console.log('[HealthStore] Final payload to sync:', {
+        count: payload.length,
+        steps: payload.filter(m => m.metric_type === 'steps').map(m => ({ date: m.recorded_at, value: m.value })),
+        sleep: payload.filter(m => m.metric_type === 'sleep_duration').map(m => ({ date: m.recorded_at, value: m.value })),
+      });
+
       // Sync to backend (writes to Supabase server-side)
       const { error } = await coresenseApi.syncHealthData({ metrics: payload });
 
       if (error) {
+        console.error('[HealthStore] Sync to backend failed:', error);
         throw error;
       }
+      console.log('[HealthStore] Sync to backend successful!');
 
       // Update sync status
       const now = new Date();

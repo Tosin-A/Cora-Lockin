@@ -151,16 +151,24 @@ export const useInsightsStore = create<InsightsStore>()(
         set({ loading: true, error: null });
 
         try {
-          const { data, error } = await coresenseApi.getHealthInsights();
+          console.log('[InsightsStore] Fetching health insights...');
+          const { data, error, errorCategory } = await coresenseApi.getHealthInsights();
 
           if (error) {
-            console.warn('Failed to fetch health insights:', error);
+            // Don't log auth errors as warnings - they're expected when not logged in
+            if (errorCategory === 'auth') {
+              console.log('[InsightsStore] Not authenticated, skipping health insights fetch');
+              set({ error: null, loading: false });
+              return;
+            }
+            console.warn('[InsightsStore] Failed to fetch health insights:', error);
             set({ error: error });
           } else if (data) {
+            console.log('[InsightsStore] Health insights fetched successfully');
             set({ healthInsights: data });
           }
         } catch (error: any) {
-          console.error('Failed to fetch health insights:', error);
+          console.error('[InsightsStore] Failed to fetch health insights:', error);
           set({ error: error.message || 'Failed to load health insights' });
         } finally {
           set({ loading: false });
