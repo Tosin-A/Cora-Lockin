@@ -15,10 +15,10 @@ A comprehensive push notification system for CoreSense that enables the coach an
 └─────────────────┘     └──────────────────┘     └─────────────────┘
         │                       │                        │
         │                       ▼                        │
-        │               ┌──────────────────┐            │
-        │               │    Supabase      │            │
-        │               │  (PostgreSQL)    │            │
-        │               └──────────────────┘            │
+        │               ┌──────────────────┐             │
+        │               │    Supabase      │             │
+        │               │  (PostgreSQL)    │             │ 
+        │               └──────────────────┘             │
         │                       │                        │
         └───────────────────────┼────────────────────────┘
                                 ▼
@@ -419,7 +419,7 @@ Use a task scheduler (e.g., Celery, APScheduler, or Railway cron) for:
 
 1. **Task Reminder Check** (every 5 mins)
    - Query tasks with due dates approaching
-   - Send reminders based on `reminder_minutes_before`
+   - Send reminders based on `reminder_minutes_before` - can be seen from the tasks on the home screen
 
 2. **Daily Engagement Check** (daily at user's preferred time)
    - Check if user has been active today

@@ -17,3 +17,6 @@ python-multipart>=0.0.21
 python-dotenv>=1.0.0
 openai>=1.0.0
 
+# Scheduler for background tasks
+apscheduler>=3.10.0
+

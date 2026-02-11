@@ -2,6 +2,8 @@
 
 AI-powered personal coaching platform with React Native mobile app and FastAPI backend.
 
+**Repository**: https://github.com/Tosin-A/Coresense-Backend-
+
 ## Tech Stack
 
 **Backend (Python)**
@@ -42,6 +44,10 @@ AI-powered personal coaching platform with React Native mobile app and FastAPI b
 ## Build & Run Commands
 
 ### Backend
+
+**Note:** The backend server is running on Railway. There is no need to start it locally.
+
+**Important:** When making changes to the `backend/` folder, push to https://github.com/Tosin-A/Coresense-Backend-. Do not use the Cora-Lockin repo. Note: The backend repo has files at root level (not in a `backend/` subfolder).
 
 ```bash
 cd backend

@@ -10,6 +10,7 @@ ios/Pods
 # Build
 dist/
 build/
+ios/Pods
 
 # Logs
 *.log
