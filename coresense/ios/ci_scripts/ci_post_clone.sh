@@ -21,21 +21,22 @@ fi
 echo "Node version: $(node --version)"
 echo "npm version: $(npm --version)"
 
-# Install npm dependencies (legacy-peer-deps to resolve react version conflicts)
-npm install --legacy-peer-deps
+# Install production dependencies only (skip devDeps like testing libraries
+# that cause peer dep conflicts with react@19.1.0 on npm 11+)
+npm install --omit=dev
 
-# Apply patches if patch-package postinstall didn't run
+# Apply patches manually (patch-package is a devDep so won't be available)
 if [ -d "patches" ]; then
     echo "=== Applying patches ==="
-    npx patch-package --patch-dir patches || {
-        echo "patch-package failed, applying patches manually..."
-        for patch_file in patches/*.patch; do
-            if [ -f "$patch_file" ]; then
-                echo "Applying $patch_file..."
-                git apply --directory=node_modules --unsafe-paths "$patch_file" || true
-            fi
-        done
-    }
+    for patch_file in patches/*.patch; do
+        if [ -f "$patch_file" ]; then
+            echo "Applying $patch_file..."
+            git apply --directory=node_modules --unsafe-paths "$patch_file" || {
+                echo "git apply failed, trying with patch command..."
+                patch -p1 --forward --directory=node_modules < "$patch_file" || true
+            }
+        fi
+    done
 fi
 
 echo "=== Installing CocoaPods dependencies ==="
