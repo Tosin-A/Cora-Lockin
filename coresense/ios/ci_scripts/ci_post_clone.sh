@@ -21,8 +21,8 @@ fi
 echo "Node version: $(node --version)"
 echo "npm version: $(npm --version)"
 
-# Install npm dependencies (include dev deps for patch-package etc.)
-npm install --include=dev
+# Install npm dependencies (legacy-peer-deps to resolve react version conflicts)
+npm install --legacy-peer-deps
 
 # Apply patches if patch-package postinstall didn't run
 if [ -d "patches" ]; then
