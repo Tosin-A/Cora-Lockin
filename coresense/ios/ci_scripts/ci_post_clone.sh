@@ -21,8 +21,22 @@ fi
 echo "Node version: $(node --version)"
 echo "npm version: $(npm --version)"
 
-# Install npm dependencies
-npm install
+# Install npm dependencies (include dev deps for patch-package etc.)
+npm install --include=dev
+
+# Apply patches if patch-package postinstall didn't run
+if [ -d "patches" ]; then
+    echo "=== Applying patches ==="
+    npx patch-package --patch-dir patches || {
+        echo "patch-package failed, applying patches manually..."
+        for patch_file in patches/*.patch; do
+            if [ -f "$patch_file" ]; then
+                echo "Applying $patch_file..."
+                git apply --directory=node_modules --unsafe-paths "$patch_file" || true
+            fi
+        done
+    }
+fi
 
 echo "=== Installing CocoaPods dependencies ==="
 
