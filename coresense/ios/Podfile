@@ -74,6 +74,7 @@ target 'CoreSense' do
         config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-DFOLLY_NO_CONFIG'
         config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-DFOLLY_MOBILE=1'
         config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-DFOLLY_USE_LIBCPP=1'
+        config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-DFOLLY_CFG_NO_COROUTINES=1'
       end
     end
   end
