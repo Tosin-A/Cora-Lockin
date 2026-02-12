@@ -60,11 +60,12 @@ export default function HealthScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await refreshTodayData();
-      await refreshWeeklyData();
-      if (user) {
-        await syncToSupabase(user.id);
-      }
+      // Run all refresh operations in parallel
+      await Promise.all([
+        refreshTodayData(),
+        refreshWeeklyData(),
+        user ? syncToSupabase(user.id, true) : Promise.resolve(),
+      ]);
     } catch (error) {
       console.error('Refresh error:', error);
     } finally {

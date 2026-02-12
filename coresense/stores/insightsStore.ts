@@ -39,6 +39,9 @@ export interface MonthlyInsight {
   achievements: string[];
 }
 
+// Cache duration: skip re-fetch if data is fresher than this (ms)
+const CACHE_DURATION_MS = 3 * 60 * 1000; // 3 minutes
+
 interface InsightsStore {
   // Legacy state (kept for compatibility)
   insights: ChatInsight[];
@@ -48,13 +51,14 @@ interface InsightsStore {
   // New commitment insights state
   commitmentInsights: InsightsScreenData | null;
   healthInsights: HealthInsightsData | null;
+  healthInsightsLastFetchedAt: number | null;
   loading: boolean;
   error: string | null;
 
   // Actions
   fetchInsights: () => Promise<void>;
   fetchCommitmentInsights: () => Promise<void>;
-  fetchHealthInsights: () => Promise<void>;
+  fetchHealthInsights: (force?: boolean) => Promise<void>;
   generateInsightFromChat: (chatMessage: string, category: string) => Promise<void>;
   dismissInsight: (insightId: string) => Promise<void>;
   saveInsight: (insightId: string) => Promise<void>;
@@ -74,6 +78,7 @@ export const useInsightsStore = create<InsightsStore>()(
       monthlyInsights: [],
       commitmentInsights: null,
       healthInsights: null,
+      healthInsightsLastFetchedAt: null,
       loading: false,
       error: null,
 
@@ -147,7 +152,14 @@ export const useInsightsStore = create<InsightsStore>()(
         }
       },
 
-      fetchHealthInsights: async () => {
+      fetchHealthInsights: async (force = false) => {
+        // Skip if data was fetched recently (unless forced)
+        const lastFetched = get().healthInsightsLastFetchedAt;
+        if (!force && lastFetched && Date.now() - lastFetched < CACHE_DURATION_MS && get().healthInsights) {
+          console.log('[InsightsStore] Health insights still fresh, skipping fetch');
+          return;
+        }
+
         set({ loading: true, error: null });
 
         try {
@@ -165,7 +177,7 @@ export const useInsightsStore = create<InsightsStore>()(
             set({ error: error });
           } else if (data) {
             console.log('[InsightsStore] Health insights fetched successfully');
-            set({ healthInsights: data });
+            set({ healthInsights: data, healthInsightsLastFetchedAt: Date.now() });
           }
         } catch (error: any) {
           console.error('[InsightsStore] Failed to fetch health insights:', error);

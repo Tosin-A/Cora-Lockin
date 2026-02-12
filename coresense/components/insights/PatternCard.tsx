@@ -2,14 +2,19 @@
  * Pattern Card Component
  * Premium dark SaaS aesthetic - unified purple accent system
  * Clean, minimal, modern with subtle purple glows
+ * Cards start collapsed and expand on tap
  */
 
-import React from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  Animated,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius, Shadows, TouchTarget } from '../../constants/theme';
@@ -20,6 +25,11 @@ import {
   PatternType,
   PatternTypeIcons,
 } from '../../types/insights';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface PatternCardProps {
   id: string;
@@ -55,9 +65,32 @@ export function PatternCard({
 }: PatternCardProps) {
   const { colors } = useTheme();
   const patternIcon = PatternTypeIcons[evidence.type] || 'analytics-outline';
+  const [expanded, setExpanded] = useState(false);
+  const chevronRotation = useRef(new Animated.Value(0)).current;
 
   // Use primary purple for all cards (unified color system)
   const accentColor = colors.primary;
+
+  const toggleExpanded = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    Animated.timing(chevronRotation, {
+      toValue: expanded ? 0 : 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+    setExpanded((prev) => !prev);
+  }, [expanded, chevronRotation]);
+
+  const chevronRotateStyle = {
+    transform: [
+      {
+        rotate: chevronRotation.interpolate({
+          inputRange: [0, 1],
+          outputRange: ['0deg', '180deg'],
+        }),
+      },
+    ],
+  };
 
   const getTrendIcon = () => {
     switch (evidence.trend_direction) {
@@ -94,8 +127,12 @@ export function PatternCard({
         {/* Subtle purple top border */}
         <View style={[styles.typeIndicator, { backgroundColor: accentColor, opacity: 0.6 }]} />
 
-        {/* Header: Icon + Title */}
-        <View style={styles.header}>
+        {/* Header: Icon + Title (always visible, tappable to expand) */}
+        <TouchableOpacity
+          style={styles.header}
+          onPress={toggleExpanded}
+          activeOpacity={0.7}
+        >
           <View style={[styles.iconContainer, { backgroundColor: colors.primaryMuted }]}>
             <Ionicons name={patternIcon as any} size={18} color={accentColor} />
           </View>
@@ -121,36 +158,51 @@ export function PatternCard({
               </View>
             )}
           </View>
-        </View>
+          <Animated.View style={[styles.chevronContainer, chevronRotateStyle]}>
+            <Ionicons name="chevron-down" size={20} color={colors.textTertiary} />
+          </Animated.View>
+        </TouchableOpacity>
 
-        {/* Coach Commentary */}
-        <Text style={[styles.commentary, { color: colors.textSecondary }]}>{coachCommentary}</Text>
+        {/* Collapsed preview - single line of commentary */}
+        {!expanded && (
+          <Text style={[styles.commentaryPreview, { color: colors.textTertiary }]} numberOfLines={1}>
+            {coachCommentary}
+          </Text>
+        )}
 
-        {/* Evidence Chart */}
-        <View style={styles.chartContainer}>
-          <InsightChart
-            labels={evidence.labels}
-            values={evidence.values}
-            highlightIndex={evidence.highlight_index}
-            highlightColor={accentColor}
-            height={80}
-          />
-        </View>
+        {/* Expanded content */}
+        {expanded && (
+          <>
+            {/* Coach Commentary */}
+            <Text style={[styles.commentary, { color: colors.textSecondary }]}>{coachCommentary}</Text>
 
-        {/* Footer: Actions */}
-        <View style={[styles.footer, { borderTopColor: colors.borderPurple }]}>
-          {actionText && onAskCoach && (
-            <TouchableOpacity
-              style={styles.askCoachButton}
-              onPress={onAskCoach}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-            >
-              <Ionicons name="chatbubble-outline" size={16} color={colors.primary} />
-              <Text style={[styles.askCoachText, { color: colors.primary }]}>Ask Coach</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+            {/* Evidence Chart */}
+            <View style={styles.chartContainer}>
+              <InsightChart
+                labels={evidence.labels}
+                values={evidence.values}
+                highlightIndex={evidence.highlight_index}
+                highlightColor={accentColor}
+                height={100}
+              />
+            </View>
+
+            {/* Footer: Actions */}
+            <View style={[styles.footer, { borderTopColor: colors.borderPurple }]}>
+              {actionText && onAskCoach && (
+                <TouchableOpacity
+                  style={styles.askCoachButton}
+                  onPress={onAskCoach}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                >
+                  <Ionicons name="chatbubble-outline" size={16} color={colors.primary} />
+                  <Text style={[styles.askCoachText, { color: colors.primary }]}>Get Actionable Insights</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </>
+        )}
       </View>
     </View>
   );
@@ -158,7 +210,7 @@ export function PatternCard({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   card: {
     backgroundColor: Colors.surface,
@@ -186,7 +238,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: Spacing.md,
     paddingTop: Spacing.xs,
   },
   iconContainer: {
@@ -209,6 +260,14 @@ const styles = StyleSheet.create({
     ...Typography.h3,
     color: Colors.textPrimary,
     flex: 1,
+  },
+  chevronContainer: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: Spacing.sm,
+    marginTop: 6,
   },
   newBadge: {
     backgroundColor: Colors.primaryMuted,
@@ -237,9 +296,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 11,
   },
+  commentaryPreview: {
+    ...Typography.bodySmall,
+    marginTop: Spacing.sm,
+    marginLeft: 52, // Align with title (40px icon + 12px margin)
+  },
   commentary: {
     ...Typography.body,
     color: Colors.textSecondary,
+    marginTop: Spacing.md,
     marginBottom: Spacing.md,
     lineHeight: 22,
   },

@@ -64,28 +64,27 @@ export default function InsightsScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // Sync HealthKit data and fetch insights on focus
+  // Fetch insights on focus (sync runs in background, not blocking)
   useFocusEffect(
     useCallback(() => {
-      const syncAndFetch = async () => {
-        console.log('[InsightsScreen] Focus effect - syncing health data and fetching insights');
-        if (permissionsGranted && user?.id) {
-          await syncToSupabase(user.id);
-        }
-        await fetchHealthInsights();
-      };
-      syncAndFetch();
+      console.log('[InsightsScreen] Focus effect - fetching insights');
+      // Fire sync in background (throttled internally) - don't await
+      if (permissionsGranted && user?.id) {
+        syncToSupabase(user.id);
+      }
+      // Fetch insights immediately (uses cache if fresh)
+      fetchHealthInsights();
     }, [fetchHealthInsights, syncToSupabase, permissionsGranted, user?.id])
   );
 
-  // Pull to refresh - sync HealthKit first, then fetch insights
+  // Pull to refresh - force sync and fetch in parallel
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      if (permissionsGranted && user?.id) {
-        await syncToSupabase(user.id);
-      }
-      await fetchHealthInsights();
+      await Promise.all([
+        permissionsGranted && user?.id ? syncToSupabase(user.id, true) : Promise.resolve(),
+        fetchHealthInsights(true),
+      ]);
     } catch (err) {
       console.error('Refresh error:', err);
     } finally {
@@ -279,7 +278,7 @@ export default function InsightsScreen() {
         {/* Pattern Cards */}
         {patterns.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>What I Noticed</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>What I Noticed</Text>
 
             {patterns.map((pattern) => (
               <PatternCard

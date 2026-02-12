@@ -1,0 +1,14 @@
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/QuantityTypeModule.swift b/node_modules/@kingstinct/react-native-healthkit/ios/QuantityTypeModule.swift
+index 1234567..abcdefg 100644
+--- a/node_modules/@kingstinct/react-native-healthkit/ios/QuantityTypeModule.swift
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/QuantityTypeModule.swift
+@@ -241,9 +241,6 @@ func extractValueByKey(anyMap: AnyMap, key: String) -> Any? {
+   if anyMap.isString(key: key) {
+     return anyMap.getString(key: key)
+   }
+-  if anyMap.isBigInt(key: key) {
+-    return anyMap.getBigInt(key: key)
+-  }
+   if anyMap.isNull(key: key) {
+     return nil
+   }

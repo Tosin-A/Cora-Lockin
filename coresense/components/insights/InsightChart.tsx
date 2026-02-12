@@ -5,11 +5,9 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useTheme } from '../../contexts/ThemeContext';
-
-const screenWidth = Dimensions.get('window').width;
 
 interface InsightChartProps {
   labels: string[];
@@ -33,16 +31,24 @@ export function InsightChart({
   height = 100,
 }: InsightChartProps) {
   const { colors } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
   const actualHighlightColor = highlightColor || colors.primary;
   const actualBarColor = barColor || colors.border;
+
   // Calculate max value for scaling
   const maxValue = Math.max(...values, 1);
-  const chartWidth = screenWidth - Spacing.lg * 4;
-  const barWidth = Math.min(28, chartWidth / labels.length - 6);
-  const barGap = 6;
+
+  // Dynamic bar sizing based on data count and screen width
+  const availableWidth = screenWidth - Spacing.lg * 4;
+  const barCount = labels.length;
+  const barGap = barCount > 7 ? 4 : 6;
+  const barWidth = Math.max(16, Math.min(32, (availableWidth - barGap * (barCount - 1)) / barCount));
+
+  // Label height depends on label length
+  const labelHeight = 28;
 
   return (
-    <View style={[styles.container, { height: height + 32 }]}>
+    <View style={[styles.container, { height: height + labelHeight + 16 }]}>
       {/* Bars */}
       <View style={[styles.barsContainer, { height }]}>
         {values.map((value, index) => {
@@ -51,7 +57,7 @@ export function InsightChart({
           const color = isHighlighted ? actualHighlightColor : actualBarColor;
 
           return (
-            <View key={index} style={styles.barWrapper}>
+            <View key={index} style={[styles.barWrapper, { width: barWidth }]}>
               {/* Value above bar */}
               {showValues && value > 0 && (
                 <Text
@@ -60,6 +66,7 @@ export function InsightChart({
                     { color: colors.textTertiary },
                     isHighlighted && { color: actualHighlightColor, fontWeight: '600' },
                   ]}
+                  numberOfLines={1}
                 >
                   {formatValue(value)}
                 </Text>
@@ -73,7 +80,7 @@ export function InsightChart({
                     width: barWidth,
                     height: Math.max(barHeight, 3),
                     backgroundColor: color,
-                    opacity: isHighlighted ? 1 : 0.3,
+                    opacity: isHighlighted ? 1 : 0.5,
                   },
                 ]}
               />
@@ -88,17 +95,20 @@ export function InsightChart({
           {labels.map((label, index) => {
             const isHighlighted = index === highlightIndex;
             return (
-              <Text
-                key={index}
-                style={[
-                  styles.label,
-                  { width: barWidth + barGap, color: colors.textTertiary },
-                  isHighlighted && [styles.highlightedLabel, { color: colors.textPrimary }],
-                ]}
-                numberOfLines={1}
-              >
-                {label}
-              </Text>
+              <View key={index} style={[styles.labelWrapper, { width: barWidth + barGap }]}>
+                <Text
+                  style={[
+                    styles.label,
+                    { color: colors.textTertiary },
+                    isHighlighted && [styles.highlightedLabel, { color: colors.textPrimary }],
+                  ]}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {label}
+                </Text>
+              </View>
             );
           })}
         </View>
@@ -150,6 +160,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: Spacing.sm,
     gap: 0,
+  },
+  labelWrapper: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   label: {
     ...Typography.caption,

@@ -322,26 +322,15 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('[HomeScreen] Focus effect triggered, user:', user?.id);
-      // Sync HealthKit data then fetch home data
-      const syncAndFetch = async () => {
-        if (user) {
-          console.log('[HomeScreen] Calling syncToSupabase...');
-          try {
-            await syncToSupabase(user.id);
-            console.log('[HomeScreen] syncToSupabase completed');
-          } catch (e) {
-            console.log('[HomeScreen] HealthKit sync on focus failed:', e);
-          }
-          // Record daily streak (will only increment once per day)
-          recordDailyStreak();
-        } else {
-          console.log('[HomeScreen] No user, skipping sync');
-        }
-        fetchData();
-        fetchTodos();
-        fetchHealthInsights(); // Fetch insights for Today's Insight card
-      };
-      syncAndFetch();
+      // Fire sync in background (throttled internally) - don't await
+      if (user) {
+        syncToSupabase(user.id);
+        recordDailyStreak();
+      }
+      // Fetch data in parallel - don't block on sync
+      fetchData();
+      fetchTodos();
+      fetchHealthInsights(); // Uses cache if fresh
     }, [fetchData, fetchTodos, fetchHealthInsights, syncToSupabase, user, recordDailyStreak])
   );
 
@@ -374,16 +363,17 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Sync HealthKit data to backend first, then fetch updated home data
-    if (user) {
-      try {
-        await syncToSupabase(user.id);
-      } catch (e) {
-        console.log('[HomeScreen] HealthKit sync failed:', e);
-      }
+    try {
+      // Force sync and fetch in parallel on pull-to-refresh
+      await Promise.all([
+        user ? syncToSupabase(user.id, true) : Promise.resolve(),
+        fetchData(false),
+        fetchHealthInsights(true),
+      ]);
+    } catch (e) {
+      console.log('[HomeScreen] Refresh failed:', e);
     }
-    fetchData(false);
-  }, [fetchData, syncToSupabase, user]);
+  }, [fetchData, fetchHealthInsights, syncToSupabase, user]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();

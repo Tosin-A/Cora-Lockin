@@ -31,6 +31,9 @@ interface DailyHealthData {
   sleepHours: number;
 }
 
+// Minimum interval between syncs (ms)
+const SYNC_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
+
 interface HealthState {
   // HealthKit status
   isAvailable: boolean;
@@ -54,6 +57,7 @@ interface HealthState {
   syncStatus: HealthSyncStatus | null;
   isSyncing: boolean;
   lastSyncedAt: Date | null;
+  lastSyncStartedAt: number | null;
 
   // Actions
   initialize: () => Promise<void>;
@@ -61,7 +65,7 @@ interface HealthState {
   setHealthKitEnabled: (enabled: boolean) => void;
   refreshTodayData: () => Promise<void>;
   refreshWeeklyData: () => Promise<void>;
-  syncToSupabase: (userId: string) => Promise<void>;
+  syncToSupabase: (userId: string, force?: boolean) => Promise<void>;
   loadFromSupabase: (userId: string) => Promise<void>;
 }
 
@@ -80,6 +84,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   syncStatus: null,
   isSyncing: false,
   lastSyncedAt: null,
+  lastSyncStartedAt: null,
 
   /**
    * Set whether HealthKit integration is enabled by user preference
@@ -208,14 +213,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   /**
    * Sync health data to Supabase
    */
-  syncToSupabase: async (userId: string) => {
+  syncToSupabase: async (userId: string, force = false) => {
     console.log('[HealthStore] syncToSupabase() called for user:', userId);
-    console.log('[HealthStore] Sync pre-check state:', {
-      healthKitEnabled: get().healthKitEnabled,
-      permissionsGranted: get().permissionsGranted,
-      isAvailable: get().isAvailable,
-      isSyncing: get().isSyncing,
-    });
 
     if (!get().healthKitEnabled) {
       console.log('[HealthStore] HealthKit disabled by user preference, skipping sync');
@@ -225,8 +224,19 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       console.warn('[HealthStore] Cannot sync: HealthKit permissions not granted');
       return;
     }
+    if (get().isSyncing) {
+      console.log('[HealthStore] Already syncing, skipping');
+      return;
+    }
 
-    set({ isSyncing: true });
+    // Throttle: skip if we synced recently (unless forced, e.g. pull-to-refresh)
+    const lastStart = get().lastSyncStartedAt;
+    if (!force && lastStart && Date.now() - lastStart < SYNC_THROTTLE_MS) {
+      console.log('[HealthStore] Sync throttled, last sync was', Math.round((Date.now() - lastStart) / 1000), 's ago');
+      return;
+    }
+
+    set({ isSyncing: true, lastSyncStartedAt: Date.now() });
 
     try {
       console.log('[HealthStore] Starting sync to Supabase...');
