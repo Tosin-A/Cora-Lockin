@@ -10,6 +10,21 @@ echo "=== Running ci_post_clone.sh ==="
 # Navigate to the coresense directory (React Native project root)
 cd "$CI_PRIMARY_REPOSITORY_PATH/coresense"
 
+# Write .env file from Xcode Cloud environment variables
+# Set these in Xcode Cloud: Workflow > Environment Variables
+echo "=== Writing .env from Xcode Cloud environment ==="
+cat > .env <<EOL
+EXPO_PUBLIC_SUPABASE_URL=${EXPO_PUBLIC_SUPABASE_URL}
+EXPO_PUBLIC_SUPABASE_SERVICE_KEY=${EXPO_PUBLIC_SUPABASE_SERVICE_KEY}
+EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
+EOL
+
+# Verify env vars are set
+if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -z "$EXPO_PUBLIC_SUPABASE_SERVICE_KEY" ]; then
+    echo "WARNING: EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_SERVICE_KEY not set in Xcode Cloud!"
+    echo "The app will crash on launch without these. Set them in Xcode Cloud workflow settings."
+fi
+
 echo "=== Installing Node.js dependencies ==="
 
 # Install Node.js via Homebrew if not available
