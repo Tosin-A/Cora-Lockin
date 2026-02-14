@@ -18,11 +18,20 @@ import { Platform } from 'react-native';
  *    - Physical device: requires EXPO_PUBLIC_API_URL to be set
  */
 function getApiBaseUrl(): string {
-  // Use environment variable if set (production or forced in dev)
   // Use environment variable if set (production builds)
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   if (envUrl && envUrl.trim() !== '') {
     return envUrl;
+  }
+
+  // Fallback: try CI-generated config
+  try {
+    const ciConfig = require('./ciConfig.json');
+    if (ciConfig.EXPO_PUBLIC_API_URL) {
+      return ciConfig.EXPO_PUBLIC_API_URL;
+    }
+  } catch {
+    // ciConfig.json doesn't exist in dev (expected)
   }
 
   // Development fallbacks by platform

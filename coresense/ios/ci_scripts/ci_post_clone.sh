@@ -12,17 +12,27 @@ cd "$CI_PRIMARY_REPOSITORY_PATH/coresense"
 
 # Write .env file from Xcode Cloud environment variables
 # Set these in Xcode Cloud: Workflow > Environment Variables
-echo "=== Writing .env from Xcode Cloud environment ==="
+echo "=== Writing environment config ==="
 cat > .env <<EOL
 EXPO_PUBLIC_SUPABASE_URL=${EXPO_PUBLIC_SUPABASE_URL}
 EXPO_PUBLIC_SUPABASE_SERVICE_KEY=${EXPO_PUBLIC_SUPABASE_SERVICE_KEY}
 EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
 EOL
 
+# Also write a JSON config that gets bundled by Metro as a direct import fallback
+# This guarantees env vars are available even if .env loading fails
+cat > utils/ciConfig.json <<EOL
+{
+  "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
+  "EXPO_PUBLIC_SUPABASE_SERVICE_KEY": "${EXPO_PUBLIC_SUPABASE_SERVICE_KEY}",
+  "EXPO_PUBLIC_API_URL": "${EXPO_PUBLIC_API_URL}"
+}
+EOL
+
 # Verify env vars are set
 if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -z "$EXPO_PUBLIC_SUPABASE_SERVICE_KEY" ]; then
     echo "WARNING: EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_SERVICE_KEY not set in Xcode Cloud!"
-    echo "The app will crash on launch without these. Set them in Xcode Cloud workflow settings."
+    echo "Set them in Xcode Cloud: Workflow > Environment Variables"
 fi
 
 echo "=== Installing Node.js dependencies ==="

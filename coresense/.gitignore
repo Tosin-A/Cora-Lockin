@@ -6,6 +6,7 @@ ios/Pods
 # Environment
 .env
 .env.local
+utils/ciConfig.json
 
 # Build
 dist/
