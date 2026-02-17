@@ -104,14 +104,16 @@ export function PatternCard({
   };
 
   const getTrendColor = () => {
-    switch (evidence.trend_direction) {
-      case 'up':
-        return type === InsightType.RISK ? colors.error : colors.success;
-      case 'down':
-        return type === InsightType.RISK ? colors.success : colors.primary;
-      default:
-        return colors.textTertiary;
-    }
+    if (evidence.trend_direction === 'stable') return colors.textTertiary;
+
+    // For stress, "up" is bad and "down" is good (inverted)
+    const patternStr = String(evidence.type);
+    const isStress = patternStr === 'stress_pattern';
+    const isPositiveDirection = isStress
+      ? evidence.trend_direction === 'down'
+      : evidence.trend_direction === 'up';
+
+    return isPositiveDirection ? colors.success : colors.error;
   };
 
   return (
@@ -124,9 +126,6 @@ export function PatternCard({
           shadowColor: colors.primary,
         }
       ]}>
-        {/* Subtle purple top border */}
-        <View style={[styles.typeIndicator, { backgroundColor: accentColor, opacity: 0.6 }]} />
-
         {/* Header: Icon + Title (always visible, tappable to expand) */}
         <TouchableOpacity
           style={styles.header}
@@ -225,15 +224,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 3,
-  },
-  typeIndicator: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
   },
   header: {
     flexDirection: 'row',

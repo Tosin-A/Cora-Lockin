@@ -18,7 +18,6 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Animated,
   Dimensions,
 } from "react-native";
@@ -214,9 +213,7 @@ export default function SettingsScreen() {
   // ============================================================================
 
   const [localPrefs, setLocalPrefs] = useState(preferences || DEFAULT_PREFERENCES);
-  const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
 
   // Feedback modal state (unchanged)
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -264,7 +261,6 @@ export default function SettingsScreen() {
   });
   const [notifPrefsLoading, setNotifPrefsLoading] = useState(true);
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false);
-  const [sendingTestNotif, setSendingTestNotif] = useState(false);
 
   // NEW: Toast state
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "error" | "info" }>({
@@ -277,11 +273,7 @@ export default function SettingsScreen() {
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
-  // NEW: Last saved timestamp
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-
-  // Animation refs
-  const saveButtonAnim = useRef(new Animated.Value(0)).current;
+  // Refs
   const scrollRef = useRef<ScrollView>(null);
 
   // ============================================================================
@@ -312,16 +304,6 @@ export default function SettingsScreen() {
 
   // HealthKit enabled state is now managed by healthStore - no need to check permissions on mount
   // The healthStore persists the enabled state and syncs data when enabled
-
-  // Animate save button visibility
-  useEffect(() => {
-    Animated.spring(saveButtonAnim, {
-      toValue: hasChanges ? 1 : 0,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 8,
-    }).start();
-  }, [hasChanges]);
 
   // ============================================================================
   // HANDLERS (Original logic preserved)
@@ -361,43 +343,18 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleSave = async () => {
-    if (!user || !localPrefs) return;
+  const updateLocalPref = async (key: keyof typeof localPrefs, value: any) => {
+    if (!localPrefs || !user) return;
+    const updated = { ...localPrefs, [key]: value };
+    setLocalPrefs(updated);
 
-    setIsSaving(true);
     try {
-      await updatePreferences(user.id, localPrefs);
-      setHasChanges(false);
-      setLastSaved(new Date());
-      showToast("Settings saved successfully!", "success");
+      await updatePreferences(user.id, { [key]: value });
     } catch (error) {
-      console.error("Error updating preferences:", error);
-      showToast("Failed to save settings", "error");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const updateLocalPref = (key: keyof typeof localPrefs, value: any) => {
-    if (!localPrefs) return;
-    setLocalPrefs({ ...localPrefs, [key]: value });
-    setHasChanges(true);
-  };
-
-  // Send test notification
-  const handleTestNotification = async () => {
-    setSendingTestNotif(true);
-    try {
-      const { success, error } = await coresenseApi.sendTestNotification();
-      if (success) {
-        showToast("Test notification sent! Check your device.", "success");
-      } else {
-        showToast(error || "Failed to send test notification", "error");
-      }
-    } catch (e) {
-      showToast("Failed to send test notification", "error");
-    } finally {
-      setSendingTestNotif(false);
+      console.error("Error auto-saving preference:", error);
+      showToast("Failed to save setting", "error");
+      // Revert on error
+      setLocalPrefs(localPrefs);
     }
   };
 
@@ -529,10 +486,17 @@ export default function SettingsScreen() {
         {
           text: "Reset",
           style: "destructive",
-          onPress: () => {
-            setLocalPrefs({ ...DEFAULT_PREFERENCES, user_id: user?.id || "" });
-            setHasChanges(true);
-            showToast("Settings reset to defaults", "info");
+          onPress: async () => {
+            const defaults = { ...DEFAULT_PREFERENCES, user_id: user?.id || "" };
+            setLocalPrefs(defaults);
+            if (user) {
+              try {
+                await updatePreferences(user.id, defaults);
+                showToast("Settings reset to defaults", "info");
+              } catch {
+                showToast("Failed to reset settings", "error");
+              }
+            }
           },
         },
       ]
@@ -608,7 +572,7 @@ export default function SettingsScreen() {
           style={styles.scrollView}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: hasChanges ? 120 : Math.max(insets.bottom, Spacing.lg) + 40 },
+            { paddingBottom: Math.max(insets.bottom, Spacing.lg) + 40 },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -741,27 +705,6 @@ export default function SettingsScreen() {
               disabled={notifPrefsLoading || savingNotifPrefs || !notifPrefs.notifications_enabled}
             />
 
-            <View style={styles.divider} />
-
-            {/* Test Notification Button */}
-            <TouchableOpacity
-              style={[
-                styles.testNotifButton,
-                (!notifPrefs.notifications_enabled || sendingTestNotif) && styles.testNotifButtonDisabled
-              ]}
-              onPress={handleTestNotification}
-              disabled={!notifPrefs.notifications_enabled || sendingTestNotif}
-              activeOpacity={0.7}
-            >
-              {sendingTestNotif ? (
-                <ActivityIndicator size="small" color={Colors.textPrimary} />
-              ) : (
-                <Ionicons name="notifications-outline" size={18} color={Colors.textPrimary} />
-              )}
-              <Text style={styles.testNotifButtonText}>
-                {sendingTestNotif ? "Sending..." : "Send Test Notification"}
-              </Text>
-            </TouchableOpacity>
           </Card>
 
           {/* ================================================================ */}
@@ -851,7 +794,15 @@ export default function SettingsScreen() {
                   maximumValue={7}
                   step={1}
                   value={displayPrefs.messaging_frequency}
-                  onValueChange={(value) => updateLocalPref("messaging_frequency", value)}
+                  onValueChange={(value) => {
+                    // Update local state for real-time visual feedback
+                    setLocalPrefs((prev) => ({ ...prev, messaging_frequency: value }));
+                  }}
+                  onSlidingComplete={(value) => {
+                    updateLocalPref("messaging_frequency", value);
+                    // Sync messaging frequency to notification daily limit
+                    updateNotifPref("max_daily_notifications", value + 3);
+                  }}
                   minimumTrackTintColor={Colors.primary}
                   maximumTrackTintColor={Colors.surfaceMedium}
                   thumbTintColor={Colors.primary}
@@ -881,10 +832,10 @@ export default function SettingsScreen() {
                 <Ionicons name="chatbubble-outline" size={20} color={Colors.primary} />
               </View>
               <View style={styles.actionRowContent}>
-                <Text style={styles.actionRowTitle}>Give Feedback</Text>
-                <Text style={styles.actionRowDescription}>Help us improve your experience</Text>
+                <Text style={[styles.actionRowTitle, { color: colors.textPrimary }]}>Give Feedback</Text>
+                <Text style={[styles.actionRowDescription, { color: colors.textTertiary }]}>Help us improve your experience</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
+              <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </TouchableOpacity>
           </Card>
 
@@ -971,12 +922,6 @@ export default function SettingsScreen() {
           {/* FOOTER */}
           {/* ================================================================ */}
           <View style={styles.footer}>
-            {lastSaved && (
-              <Text style={styles.lastSavedText}>
-                Last saved: {lastSaved.toLocaleTimeString()}
-              </Text>
-            )}
-
             <TouchableOpacity
               style={styles.resetButton}
               onPress={handleResetToDefaults}
@@ -992,31 +937,6 @@ export default function SettingsScreen() {
           </View>
         </ScrollView>
 
-        {/* Sticky Save Button */}
-        <Animated.View
-          style={[
-            styles.stickyButtonContainer,
-            {
-              transform: [
-                {
-                  translateY: saveButtonAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [100, 0],
-                  }),
-                },
-              ],
-              opacity: saveButtonAnim,
-              paddingBottom: Math.max(insets.bottom, Spacing.md),
-            },
-          ]}
-        >
-          <PurpleButton
-            title={isSaving ? "Saving..." : "Save Changes"}
-            onPress={handleSave}
-            disabled={isSaving}
-            style={styles.saveButton}
-          />
-        </Animated.View>
       </View>
 
       {/* ================================================================ */}
@@ -1355,27 +1275,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  // Test Notification Button
-  testNotifButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-    backgroundColor: Colors.primary,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.medium,
-    marginTop: Spacing.sm,
-  },
-  testNotifButtonDisabled: {
-    backgroundColor: Colors.surfaceMedium,
-    opacity: 0.6,
-  },
-  testNotifButtonText: {
-    ...Typography.button,
-    color: Colors.textPrimary,
-  },
-
   // Quiet Hours
   quietHoursExpanded: {
     marginTop: Spacing.sm,
@@ -1622,10 +1521,6 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
     gap: Spacing.md,
   },
-  lastSavedText: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-  },
   resetButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -1640,22 +1535,6 @@ const styles = StyleSheet.create({
   versionText: {
     ...Typography.caption,
     color: Colors.textMuted,
-  },
-
-  // Sticky Save Button
-  stickyButtonContainer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: Colors.background,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-  },
-  saveButton: {
-    marginBottom: 0,
   },
 
   // Modal Styles (Preserved)

@@ -739,7 +739,7 @@ export const getTodayHealthData = async (): Promise<HealthData> => {
 /**
  * Get weekly health data
  */
-export const getWeeklyHealthData = async (): Promise<{
+export const getWeeklyHealthData = async (days: number = 14): Promise<{
   steps: Array<{ date: Date; steps: number }>;
   sleep: Array<{ date: Date; hours: number }>;
   heartRate: Array<{ date: Date; bpm: number }>;
@@ -747,7 +747,7 @@ export const getWeeklyHealthData = async (): Promise<{
 }> => {
   const endDate = new Date();
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 7);
+  startDate.setDate(startDate.getDate() - days);
 
   const [steps, sleep, heartRate, activeEnergy] = await Promise.all([
     getDailySteps(startDate, endDate),

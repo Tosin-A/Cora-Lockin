@@ -134,4 +134,3 @@ const styles = StyleSheet.create({
     marginRight: Spacing.xs,
   },
 });
-

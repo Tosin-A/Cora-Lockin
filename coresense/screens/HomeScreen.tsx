@@ -2,7 +2,7 @@
  * Home Screen
  * A daily ritual landing page that reflects the coach's last communication
  * and nudges the user into meaningful interaction.
- * 
+ *
  * All data comes from real user records - no mock or placeholder data.
  */
 
@@ -39,6 +39,7 @@ import { useUserStore } from '../stores/userStore';
 import { useHealthStore } from '../stores/healthStore';
 import { useTodosStore } from '../stores/todosStore';
 import { useInsightsStore } from '../stores/insightsStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { coresenseApi, HomeData } from '../utils/coresenseApi';
 import type { Todo } from '../types/todos';
 import { InsightType } from '../types/insights';
@@ -235,6 +236,10 @@ export default function HomeScreen() {
   // Streak modal state
   const [streakModalVisible, setStreakModalVisible] = useState(false);
 
+  // Greeting popup state - only show once per day (persisted in AsyncStorage)
+  const [greetingPopupMessage, setGreetingPopupMessage] = useState<string | null>(null);
+  const greetingShownRef = useRef(false);
+
   // Add task modal state
   const [addTaskModalVisible, setAddTaskModalVisible] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -257,6 +262,33 @@ export default function HomeScreen() {
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
+
+  // Greeting text - picks a random greeting based on time of day
+  const pickGreeting = useCallback(() => {
+    const hour = new Date().getHours();
+    const morningVibes = [
+      "Rise and grind",
+      "Morning, we move",
+      "Up already? Respect",
+      "Let's get after it",
+    ];
+    const afternoonVibes = [
+      "What's good",
+      "Long morning ahlie",
+      "Afternoon, we locked in",
+      "Energy still there",
+    ];
+    const eveningVibes = [
+      "We survived the day",
+      "Still focused",
+      "Night grind activated",
+      "Calm finish, yeah",
+    ];
+    const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+    return hour < 12 ? pick(morningVibes) : hour < 18 ? pick(afternoonVibes) : pick(eveningVibes);
+  }, []);
+
+  const [greeting, setGreeting] = useState(pickGreeting);
 
   // Fetch real data from API with proper error handling
   const fetchData = useCallback(async (showLoader = true) => {
@@ -327,11 +359,47 @@ export default function HomeScreen() {
         syncToSupabase(user.id);
         recordDailyStreak();
       }
+
+      // Pick a fresh greeting each time the screen gains focus
+      setGreeting(pickGreeting());
+
+      // Greeting popup logic - only show once per day (persisted via AsyncStorage)
+      if (!greetingShownRef.current) {
+        greetingShownRef.current = true;
+        const today = new Date().toISOString().split('T')[0];
+
+        AsyncStorage.getItem('greeting_popup_last_shown').then((lastShown) => {
+          if (lastShown === today) return; // Already shown today
+
+          AsyncStorage.setItem('greeting_popup_last_shown', today);
+
+          const hour = new Date().getHours();
+          const streak = streakData.currentStreak || 0;
+
+          // First ever entry (no streak + no last activity)
+          if (!streakData.lastActivityDate && streak === 0) {
+            setGreetingPopupMessage("Welcome — let's build momentum from today.");
+          }
+          // Afternoon check-in nudge
+          else if (!hasCheckedInToday() && hour >= 12 && hour < 20) {
+            setGreetingPopupMessage("Quick check-in pending 👀");
+          }
+          // Strong streak
+          else if (streak >= 7) {
+            setGreetingPopupMessage(`${streak} day streak is serious.`);
+          }
+          // Active streak
+          else if (streak > 0 && streak < 7) {
+            setGreetingPopupMessage("Keep the streak alive.");
+          }
+        });
+      }
+
       // Fetch data in parallel - don't block on sync
       fetchData();
       fetchTodos();
       fetchHealthInsights(); // Uses cache if fresh
-    }, [fetchData, fetchTodos, fetchHealthInsights, syncToSupabase, user, recordDailyStreak])
+    }, [fetchData, fetchTodos, fetchHealthInsights, syncToSupabase, user, recordDailyStreak, pickGreeting])
   );
 
   useEffect(() => {
@@ -363,6 +431,7 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setGreeting(pickGreeting());
     try {
       // Force sync and fetch in parallel on pull-to-refresh
       await Promise.all([
@@ -373,14 +442,7 @@ export default function HomeScreen() {
     } catch (e) {
       console.log('[HomeScreen] Refresh failed:', e);
     }
-  }, [fetchData, fetchHealthInsights, syncToSupabase, user]);
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Whats good';
-    if (hour < 18) return 'Long morning ahlie';
-    return 'End of the day';
-  };
+  }, [fetchData, fetchHealthInsights, syncToSupabase, user, pickGreeting]);
 
   const firstName = profile?.username || 'there';
 
@@ -573,7 +635,7 @@ export default function HomeScreen() {
           styles.content,
           {
             paddingTop: Math.max(insets.top + Spacing.md, Spacing.xl),
-            paddingBottom: Math.max(insets.bottom, Spacing.lg) + 160,
+            paddingBottom: Math.max(insets.bottom, Spacing.lg) + 16,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -598,10 +660,7 @@ export default function HomeScreen() {
         <View style={styles.greetingRow}>
           <View style={styles.greetingTextContainer}>
             <Text style={[styles.greeting, { color: colors.textPrimary }]}>
-              {getGreeting()},
-            </Text>
-            <Text style={[styles.greeting, { color: colors.textPrimary }]}>
-              {firstName}
+              {greeting} {firstName}
             </Text>
           </View>
           <TouchableOpacity
@@ -625,9 +684,6 @@ export default function HomeScreen() {
           <TouchableOpacity onPress={handleGoToCoachChat} activeOpacity={0.9}>
             <Card style={styles.coachMessageCard}>
               <View style={styles.coachMessageHeader}>
-                <View style={[styles.coachAvatar, { backgroundColor: colors.primaryMuted }]}>
-                  <Ionicons name="person" size={20} color={colors.primary} />
-                </View>
                 <View style={styles.coachInfo}>
                   <Text style={[styles.coachName, { color: colors.textPrimary }]}>Cora</Text>
                   <Text style={[styles.messageTime, { color: colors.textTertiary }]}>{formatMessageTime(homeData.lastCoachMessage.timestamp)}</Text>
@@ -822,6 +878,20 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* Check In Button - inline, scrolls with content */}
+      {!hasCheckedInToday() && (
+        <View style={styles.checkInContainer}>
+          <TouchableOpacity
+            style={[styles.fab, { backgroundColor: colors.primary }]}
+            onPress={() => setShowQuickLog(true)}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="add" size={24} color="#FFFFFF" />
+            <Text style={styles.fabText}>Check In</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Add Task Modal */}
       <Modal
         visible={addTaskModalVisible}
@@ -970,6 +1040,33 @@ export default function HomeScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Greeting Popup Modal */}
+      <Modal
+        visible={!!greetingPopupMessage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGreetingPopupMessage(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setGreetingPopupMessage(null)}
+        >
+          <View style={[styles.streakModalContent, { backgroundColor: colors.surface }]}> 
+            <Text style={[styles.streakModalTitle, { color: colors.textPrimary }]}>Heads up</Text>
+            <Text style={[styles.streakModalDescription, { color: colors.textSecondary, marginTop: 8 }]}> 
+              {greetingPopupMessage}
+            </Text>
+            <TouchableOpacity
+              style={[styles.streakModalButton, { backgroundColor: colors.primary, marginTop: 16 }]}
+              onPress={() => setGreetingPopupMessage(null)}
+            >
+              <Text style={styles.streakModalButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Streak Modal */}
       <Modal
         visible={streakModalVisible}
@@ -1028,20 +1125,6 @@ export default function HomeScreen() {
       </Modal>
       </ScrollView>
 
-      {/* Floating Check In Button - only show if user hasn't checked in today */}
-      {!hasCheckedInToday() && (
-        <View style={[styles.fabContainer, { bottom: Math.max(insets.bottom, 16) + 80 }]}>
-          <TouchableOpacity
-            style={[styles.fab, { backgroundColor: colors.primary }]}
-            onPress={() => setShowQuickLog(true)}
-            activeOpacity={0.9}
-          >
-            <Ionicons name="add" size={24} color="#FFFFFF" />
-            <Text style={styles.fabText}>Check In</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* Quick Log Modal */}
       <QuickLogModal
         visible={showQuickLog}
@@ -1069,12 +1152,10 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
   },
   // Floating Action Button
-  fabContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
+  checkInContainer: {
     alignItems: 'center',
-    zIndex: 100,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   fab: {
     flexDirection: 'row',
@@ -1185,15 +1266,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: Spacing.md,
-  },
-  coachAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 122, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
   },
   coachInfo: {
     flex: 1,
@@ -1517,6 +1589,7 @@ const styles = StyleSheet.create({
     ...Typography.h1,
     color: Colors.primary,
     fontSize: 40,
+    lineHeight: 48,
     fontWeight: '800',
   },
   streakStatLabel: {

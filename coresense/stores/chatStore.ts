@@ -13,6 +13,7 @@ import { Alert } from "react-native";
 import { coresenseApi } from "../utils/coresenseApi";
 import { useAuthStore } from "./authStore";
 import { useMessageLimitStore } from "./messageLimitStore";
+import { useTodosStore } from "./todosStore";
 
 export interface ChatMessage {
   // DB-owned fields (set after reconciliation)
@@ -268,6 +269,12 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
           ],
           lastRunId: runId,
         }));
+      }
+
+      // If the coach created a task during this conversation, refresh the todos list
+      const functionCalls = data?.function_calls || [];
+      if (functionCalls.some((fc: any) => fc.name === "create_user_task")) {
+        useTodosStore.getState().fetchTodos();
       }
 
       // Wait for DB write to complete before reconciliation

@@ -215,7 +215,7 @@ export default function CoachChatScreen({ navigation }: any) {
             <View style={[styles.coachAvatar, { backgroundColor: colors.primary }]}>
               <Ionicons name="person" size={20} color="#FFFFFF" />
             </View>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Cora</Text>
+            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Kora</Text>
             {typing && <Text style={[styles.headerSubtitle, { color: colors.textTertiary }]}>Typing...</Text>}
           </View>
 
@@ -280,7 +280,7 @@ export default function CoachChatScreen({ navigation }: any) {
               color={colors.accent}
             />
           </View>
-          <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>Cora</Text>
+          <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>Kora</Text>
           <Text style={[styles.welcomeSubtitle, { color: colors.textSecondary }]}>
             I'm here to hold you accountable. Not to cheer you on. Not to be
             your therapist. To call you out when you're making excuses and

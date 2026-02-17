@@ -256,11 +256,11 @@ export const useHealthStore = create<HealthState>((set, get) => ({
         heartRate: todayData.heartRate,
       });
 
-      // Get weekly data for last 7 days
+      // Get health data for last 14 days to fill in gaps for insights
       const endDate = new Date();
-      const startDate = subDays(endDate, 7);
-      console.log('[HealthStore] Fetching weekly data from', startDate.toISOString(), 'to', endDate.toISOString());
-      const weeklyData = await getWeeklyHealthData();
+      const startDate = subDays(endDate, 14);
+      console.log('[HealthStore] Fetching health data from', startDate.toISOString(), 'to', endDate.toISOString());
+      const weeklyData = await getWeeklyHealthData(14);
       console.log('[HealthStore] Weekly data from HealthKit:', {
         stepsCount: weeklyData.steps.length,
         sleepCount: weeklyData.sleep.length,
