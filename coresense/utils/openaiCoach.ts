@@ -46,8 +46,6 @@ export interface CoachContext {
     current_streak: number;
     longest_streak: number;
     recent_pattern: 'locked_in' | 'coasting' | 'slipping' | 'struggling';
-    last_commitment?: string;
-    commitment_status?: 'pending' | 'completed' | 'missed';
     days_since_last_open: number;
     typical_active_hours: string;
     response_rate: 'high' | 'medium' | 'low';
@@ -65,7 +63,6 @@ export interface CoachContext {
   };
   time_context: {
     current_time: string;
-    time_until_commitment?: string;
     day_of_week: string;
     hour_of_day: number;
   };
@@ -248,10 +245,6 @@ Remember: Test every message with "Would a real person text this?"`;
       prompt += "\n";
     }
 
-    if (context.user_state.last_commitment) {
-      prompt += `Active commitment: "${context.user_state.last_commitment}" (${context.user_state.commitment_status})\n\n`;
-    }
-
     if (context.health_context) {
       prompt += `Health context: Sleep ${context.health_context.sleep_trend || 'stable'}, Activity ${context.health_context.activity_trend || 'stable'}\n\n`;
     }
@@ -360,7 +353,6 @@ Remember: Test every message with "Would a real person text this?"`;
     
     if (context.user_state.current_streak > 0) used.push('streak');
     if (context.conversation_context.length > 0) used.push('conversation_history');
-    if (context.user_state.last_commitment) used.push('commitment');
     if (context.health_context) used.push('health_data');
     
     return used;

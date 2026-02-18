@@ -1,6 +1,6 @@
 /**
  * Insights Types
- * Type definitions for commitment-pattern-focused insights with AI coach interpretation.
+ * Type definitions for health and wellness insights with AI coach interpretation.
  */
 
 export enum InsightType {
@@ -11,7 +11,7 @@ export enum InsightType {
 
 export enum PatternType {
   TIME_OF_DAY = 'time_of_day',       // When user is most productive
-  DAY_OF_WEEK = 'day_of_week',       // Best days for completing commitments
+  DAY_OF_WEEK = 'day_of_week',       // Best days for activity
   STREAK = 'streak',                 // Streak patterns and comparisons
   COMPLETION_RATE = 'completion_rate' // Trending completion rate
 }

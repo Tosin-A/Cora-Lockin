@@ -1,6 +1,6 @@
 /**
  * Insights Components
- * Components for the commitment-pattern-focused insights screen.
+ * Components for the health and wellness insights screen.
  */
 
 export { CoachCommentary } from './CoachCommentary';

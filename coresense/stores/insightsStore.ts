@@ -1,13 +1,12 @@
 /**
- * Insights Store - State management for commitment-pattern insights
- * Manages AI coach insights derived from commitment behavior patterns
+ * Insights Store - State management for health and wellness insights
+ * Manages AI coach insights derived from health and behavior patterns
  */
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { coresenseApi, HealthInsightsData } from '../utils/coresenseApi';
-import { InsightsScreenData, InsightData } from '../types/insights';
 
 export interface ChatInsight {
   id: string;
@@ -48,8 +47,7 @@ interface InsightsStore {
   weeklyInsights: WeeklyInsight[];
   monthlyInsights: MonthlyInsight[];
 
-  // New commitment insights state
-  commitmentInsights: InsightsScreenData | null;
+  // Health insights state
   healthInsights: HealthInsightsData | null;
   healthInsightsLastFetchedAt: number | null;
   loading: boolean;
@@ -57,7 +55,6 @@ interface InsightsStore {
 
   // Actions
   fetchInsights: () => Promise<void>;
-  fetchCommitmentInsights: () => Promise<void>;
   fetchHealthInsights: (force?: boolean) => Promise<void>;
   generateInsightFromChat: (chatMessage: string, category: string) => Promise<void>;
   dismissInsight: (insightId: string) => Promise<void>;
@@ -76,7 +73,6 @@ export const useInsightsStore = create<InsightsStore>()(
       insights: [],
       weeklyInsights: [],
       monthlyInsights: [],
-      commitmentInsights: null,
       healthInsights: null,
       healthInsightsLastFetchedAt: null,
       loading: false,
@@ -126,26 +122,6 @@ export const useInsightsStore = create<InsightsStore>()(
           }
         } catch (error: any) {
           console.error('Failed to fetch insights:', error);
-          set({ error: error.message || 'Failed to load insights' });
-        } finally {
-          set({ loading: false });
-        }
-      },
-
-      fetchCommitmentInsights: async () => {
-        set({ loading: true, error: null });
-
-        try {
-          const { data, error } = await coresenseApi.getCommitmentInsights();
-
-          if (error) {
-            console.warn('Failed to fetch commitment insights:', error);
-            set({ error: error });
-          } else if (data) {
-            set({ commitmentInsights: data as InsightsScreenData });
-          }
-        } catch (error: any) {
-          console.error('Failed to fetch commitment insights:', error);
           set({ error: error.message || 'Failed to load insights' });
         } finally {
           set({ loading: false });
@@ -236,18 +212,6 @@ export const useInsightsStore = create<InsightsStore>()(
               ),
             }));
 
-            // Update commitment insights - remove from patterns
-            set((state) => {
-              if (!state.commitmentInsights) return state;
-              return {
-                commitmentInsights: {
-                  ...state.commitmentInsights,
-                  patterns: state.commitmentInsights.patterns.filter(
-                    (p) => p.id !== insightId
-                  ),
-                },
-              };
-            });
           }
         } catch (error: any) {
           console.error('Failed to dismiss insight:', error);
@@ -275,19 +239,6 @@ export const useInsightsStore = create<InsightsStore>()(
       recordReaction: async (insightId: string, helpful: boolean) => {
         try {
           await coresenseApi.recordInsightReaction(insightId, helpful);
-
-          // Mark as no longer new
-          set((state) => {
-            if (!state.commitmentInsights) return state;
-            return {
-              commitmentInsights: {
-                ...state.commitmentInsights,
-                patterns: state.commitmentInsights.patterns.map((p) =>
-                  p.id === insightId ? { ...p, is_new: false } : p
-                ),
-              },
-            };
-          });
         } catch (error: any) {
           console.error('Failed to record reaction:', error);
         }
@@ -311,9 +262,7 @@ export const useInsightsStore = create<InsightsStore>()(
       },
 
       hasNewInsights: () => {
-        const { commitmentInsights } = get();
-        if (!commitmentInsights?.patterns) return false;
-        return commitmentInsights.patterns.some((p) => p.is_new);
+        return false;
       },
 
       clearError: () => {

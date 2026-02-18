@@ -142,14 +142,6 @@ export interface SuggestedAction {
   completedAt?: string;
 }
 
-export interface Commitment {
-  id: string;
-  text: string;
-  dueDate?: string;
-  priority: string;
-  createdAt: string;
-}
-
 export type UserProfile = User;
 
 export interface UserPreferences {
@@ -171,7 +163,6 @@ export interface Streak {
 
 export interface Streaks {
   check_in?: Streak;
-  commitment?: Streak;
   engagement?: Streak;
   health_sync?: Streak;
 }
@@ -596,33 +587,6 @@ export async function recordDidIt(): Promise<{
 }
 
 // ============================================================================
-// COMMITMENTS API
-// ============================================================================
-
-/**
- * Get active commitments.
- */
-export async function getCommitments(): Promise<{
-  data: Commitment[] | null;
-  error: string | null;
-}> {
-  return apiRequest<Commitment[]>("/api/v1/commitments");
-}
-
-/**
- * Check in on a commitment.
- */
-export async function checkInCommitment(
-  commitmentId: string,
-): Promise<{ success: boolean; error: string | null }> {
-  const { data, error } = await apiRequest<{ success: boolean }>(
-    `/api/v1/commitments/${commitmentId}/check-in`,
-    { method: "POST" },
-  );
-  return { success: data?.success || false, error };
-}
-
-// ============================================================================
 // COACH API
 // ============================================================================
 
@@ -981,12 +945,6 @@ export async function getStreaksLegacy(): Promise<{
       lastActivity: string;
       userTimezone: string;
     };
-    commitment?: {
-      current: number;
-      longest: number;
-      lastActivity: string;
-      userTimezone: string;
-    };
     engagement?: {
       current: number;
       longest: number;
@@ -1004,12 +962,6 @@ export async function getStreaksLegacy(): Promise<{
 }> {
   return apiRequest<{
     check_in?: {
-      current: number;
-      longest: number;
-      lastActivity: string;
-      userTimezone: string;
-    };
-    commitment?: {
       current: number;
       longest: number;
       lastActivity: string;
@@ -1064,46 +1016,6 @@ export async function upgradeToPro(
     { method: "POST" },
   );
   return { success: data?.success || false, error };
-}
-
-// ============================================================================
-// COMMITMENT INSIGHTS API
-// ============================================================================
-
-/**
- * Commitment Insights response data structure
- */
-export interface CommitmentInsightsData {
-  coach_summary: string | null;
-  patterns: Array<{
-    id: string;
-    type: string;
-    title: string;
-    coach_commentary: string;
-    evidence: {
-      type: string;
-      labels: string[];
-      values: number[];
-      highlight_index?: number;
-      trend_direction: 'up' | 'down' | 'stable';
-      trend_value?: string;
-    };
-    action_text?: string;
-    is_new: boolean;
-    created_at: string;
-  }>;
-  has_enough_data: boolean;
-  days_until_enough_data?: number;
-}
-
-/**
- * Get commitment-pattern-focused insights with AI coach interpretation.
- */
-export async function getCommitmentInsights(): Promise<{
-  data: CommitmentInsightsData | null;
-  error: string | null;
-}> {
-  return apiRequest<CommitmentInsightsData>("/api/v1/insights/commitment-patterns");
 }
 
 /**
@@ -1405,7 +1317,6 @@ export const coresenseApi = {
   getInsights,
   saveInsight,
   dismissInsight,
-  getCommitmentInsights,
   getHealthInsights,
   recordInsightReaction,
 
@@ -1415,10 +1326,6 @@ export const coresenseApi = {
   getSuggestedActions,
   completeAction,
   recordDidIt,
-
-  // Commitments
-  getCommitments,
-  checkInCommitment,
 
   // Coach
   getLastCoachMessage,

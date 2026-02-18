@@ -137,19 +137,6 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         sendMessage("I had a real breakthrough today", true);
       },
     },
-    {
-      id: "commit",
-      title: "Making a Commitment",
-      icon: "checkmark-circle-outline",
-      category: "checkin",
-      action: () => {
-        const { sendMessage } = get();
-        sendMessage(
-          "I want to make a commitment and need you to hold me to it",
-          true
-        );
-      },
-    },
   ],
   isLoadingHistory: false,
   currentLoadId: 0,

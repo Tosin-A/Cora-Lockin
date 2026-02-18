@@ -1,6 +1,6 @@
 /**
  * Engagement Store (Zustand)
- * Manages AI-suggested engagement actions, commitments, and rituals.
+ * Manages AI-suggested engagement actions and rituals.
  *
  * NOTE: This store now includes AsyncStorage persistence for streak data.
  * Streaks are saved locally and synced with the backend.
@@ -19,18 +19,6 @@ export interface EngagementAction {
   completed: boolean;
   completedAt?: Date | string;
   createdAt?: Date | string;
-}
-
-export interface Commitment {
-  id: string;
-  text: string;
-  streak?: number;
-  lastCheckIn?: Date | string;
-  nextCheckIn?: Date | string;
-  isActive?: boolean;
-  dueDate?: string;
-  priority?: string;
-  createdAt: Date | string;
 }
 
 export interface DailyPrompt {
@@ -57,9 +45,6 @@ interface EngagementState {
   // Suggested actions
   suggestedActions: EngagementAction[];
 
-  // Active commitments
-  commitments: Commitment[];
-
   // Stats
   totalCompletedToday: number;
   currentStreak: number;
@@ -73,7 +58,6 @@ interface EngagementState {
   // Actions
   setDailyPrompt: (prompt: DailyPrompt | null) => void;
   setSuggestedActions: (actions: EngagementAction[]) => void;
-  setCommitments: (commitments: Commitment[]) => void;
   setStats: (total: number, streak: number) => void;
 
   completeActionLocal: (actionId: string) => void;
@@ -105,7 +89,6 @@ const defaultStreakData: StreakData = {
 export const useEngagementStore = create<EngagementState>((set, get) => ({
   dailyPrompt: null,
   suggestedActions: [],
-  commitments: [],
   totalCompletedToday: 0,
   currentStreak: 0,
   streakData: defaultStreakData,
@@ -117,10 +100,6 @@ export const useEngagementStore = create<EngagementState>((set, get) => ({
 
   setSuggestedActions: (actions) => {
     set({ suggestedActions: actions });
-  },
-
-  setCommitments: (commitments) => {
-    set({ commitments });
   },
 
   setStats: (total, streak) => {
@@ -255,7 +234,6 @@ export const useEngagementStore = create<EngagementState>((set, get) => ({
     set({
       dailyPrompt: null,
       suggestedActions: [],
-      commitments: [],
       totalCompletedToday: 0,
       currentStreak: 0,
       streakData: defaultStreakData,

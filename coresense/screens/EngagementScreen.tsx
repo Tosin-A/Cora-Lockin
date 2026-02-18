@@ -30,7 +30,6 @@ import {
   coresenseApi,
   DailyPrompt,
   SuggestedAction,
-  Commitment,
 } from '../utils/coresenseApi';
 
 export default function EngagementScreen() {
@@ -40,7 +39,6 @@ export default function EngagementScreen() {
   // Real data state
   const [dailyPrompt, setDailyPrompt] = useState<DailyPrompt | null>(null);
   const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>([]);
-  const [commitments, setCommitments] = useState<Commitment[]>([]);
   const [totalCompletedToday, setTotalCompletedToday] = useState(0);
   const [currentStreak, setCurrentStreak] = useState(0);
   
@@ -58,10 +56,9 @@ export default function EngagementScreen() {
     setError(null);
 
     try {
-      const [promptRes, actionsRes, commitmentsRes, streakRes] = await Promise.all([
+      const [promptRes, actionsRes, streakRes] = await Promise.all([
         coresenseApi.getDailyPrompt(),
         coresenseApi.getSuggestedActions(),
-        coresenseApi.getCommitments(),
         coresenseApi.getStreak(),
       ]);
 
@@ -77,10 +74,6 @@ export default function EngagementScreen() {
         // Count completed today
         const completed = actionsRes.data.filter((a) => a.completed).length;
         setTotalCompletedToday(completed);
-      }
-
-      if (commitmentsRes.data) {
-        setCommitments(commitmentsRes.data);
       }
 
       if (streakRes.data) {
@@ -166,23 +159,6 @@ export default function EngagementScreen() {
     } else {
       console.warn('Did It error:', error);
     }
-  };
-
-  const handleCommitmentCheckIn = async (commitmentId: string) => {
-    Alert.alert('Check In', 'Did you complete your commitment today?', [
-      { text: 'Not yet', style: 'cancel' },
-      {
-        text: 'Yes, I did it!',
-        onPress: async () => {
-          const { success } = await coresenseApi.checkInCommitment(commitmentId);
-          if (success) {
-            setCommitments((prev) =>
-              prev.filter((c) => c.id !== commitmentId)
-            );
-          }
-        },
-      },
-    ]);
   };
 
   // Get icon for category
@@ -362,33 +338,6 @@ export default function EngagementScreen() {
           </Card>
         )}
       </View>
-
-      {/* Commitment Tracker */}
-      {commitments.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Active Commitments</Text>
-          {commitments.map((commitment) => (
-            <TouchableOpacity
-              key={commitment.id}
-              style={styles.commitmentItem}
-              onPress={() => handleCommitmentCheckIn(commitment.id)}
-            >
-              <View style={styles.commitmentCheckbox}>
-                <Ionicons name="square-outline" size={22} color={Colors.primary} />
-              </View>
-              <View style={styles.commitmentContent}>
-                <Text style={styles.commitmentText}>{commitment.text}</Text>
-                {commitment.dueDate && (
-                  <Text style={styles.commitmentDue}>
-                    Due: {new Date(commitment.dueDate).toLocaleDateString()}
-                  </Text>
-                )}
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
 
       {/* "I Did It" Button */}
       <DidItButton onPress={handleDidIt} completedToday={totalCompletedToday} />
@@ -599,33 +548,6 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     ...Typography.bodySmall,
     color: Colors.textSecondary,
-    marginTop: Spacing.xs,
-  },
-  // Commitment styles
-  commitmentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.medium,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.borderPurple,
-  },
-  commitmentCheckbox: {
-    marginRight: Spacing.md,
-  },
-  commitmentContent: {
-    flex: 1,
-  },
-  commitmentText: {
-    ...Typography.body,
-    color: Colors.textPrimary,
-    fontWeight: '500',
-  },
-  commitmentDue: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
     marginTop: Spacing.xs,
   },
   // Completed styles

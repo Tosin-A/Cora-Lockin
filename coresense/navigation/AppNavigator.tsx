@@ -342,9 +342,6 @@ export default function AppNavigator() {
           console.error('[AppNavigator] Notification handler setup failed:', error);
         });
 
-      // Prefetch commitment insights for badge display
-      console.log('[AppNavigator] Prefetching commitment insights...');
-      useInsightsStore.getState().fetchCommitmentInsights();
     }
 
     return () => {
