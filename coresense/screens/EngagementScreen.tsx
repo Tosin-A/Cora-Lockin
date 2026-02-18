@@ -22,7 +22,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
 import {
   ActionSuggestionCard,
-  CommitmentTracker,
   DidItButton,
   Card,
 } from '../components';

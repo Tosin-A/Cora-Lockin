@@ -18,7 +18,6 @@ export { default as MiniRitualPrompt } from "./MiniRitualPrompt";
 
 // Engagement-focused components - Engagement Screen
 export { default as ActionSuggestionCard } from "./ActionSuggestionCard";
-export { default as CommitmentTracker } from "./CommitmentTracker";
 export { default as EngagementPrompt } from "./EngagementPrompt";
 export { default as DidItButton } from "./DidItButton";
 

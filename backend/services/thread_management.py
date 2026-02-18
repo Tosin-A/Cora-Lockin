@@ -46,7 +46,7 @@ class ThreadManagementService:
             logger.info("OpenAI API client initialized")
         
         # The main coach assistant
-        self.assistant_id = "asst_vb5GaGjEUo5REgjBrTYADHKf"
+        self.assistant_id = settings.openai_assistant_id or "asst_vb5GaGjEUo5REgjBrTYADHKf"
         
         # Function definitions for the assistant
         self.functions = [
@@ -106,9 +106,54 @@ class ThreadManagementService:
                         "required": ["user_id", "recent_messages"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "create_user_task",
+                    "description": (
+                        "Create a task on the user's to-do list. Call this ONLY when the user makes "
+                        "a clear, specific commitment to do something actionable. Examples: 'I'll go to "
+                        "the gym tomorrow at 6am', 'I'm going to read for 30 minutes tonight', 'I need "
+                        "to finish my report by Friday'. Do NOT call this for vague intentions like "
+                        "'I should exercise more' or 'I want to be healthier'. The commitment must have "
+                        "a specific action. If the user mentions a timeframe, include it as due_date."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "user_id": {
+                                "type": "string",
+                                "description": "The user's ID"
+                            },
+                            "title": {
+                                "type": "string",
+                                "description": "Short, actionable task title under 60 characters (e.g. 'Go to the gym', 'Read for 30 minutes')"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Optional additional context about the task"
+                            },
+                            "priority": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high"],
+                                "description": "Task priority. Default to medium."
+                            },
+                            "due_date": {
+                                "type": "string",
+                                "description": "ISO date (YYYY-MM-DD) if the user mentioned a specific day. Omit if no date mentioned."
+                            },
+                            "coach_reasoning": {
+                                "type": "string",
+                                "description": "Write in first person from the user's perspective (e.g. \"I'm working on robotics at 4\", \"I'm going to the gym at 6am\"). Keep it to one short sentence."
+                            }
+                        },
+                        "required": ["user_id", "title"]
+                    }
+                }
             }
         ]
-    
+
     async def get_or_create_user_thread(self, user_id: str) -> str:
         """
         Get existing thread or create new one for user.
@@ -135,10 +180,44 @@ class ThreadManagementService:
             logger.error(f"Error getting/creating thread for user {user_id}: {e}")
             raise
     
+    async def cancel_active_runs(self, thread_id: str):
+        """Cancel any active runs on a thread so new messages can be added."""
+        if not self.client:
+            return
+
+        try:
+            runs = await asyncio.to_thread(
+                self.client.beta.threads.runs.list,
+                thread_id=thread_id,
+                limit=10
+            )
+
+            for run in runs.data:
+                if run.status in ("queued", "in_progress", "requires_action"):
+                    logger.info(f"Cancelling active run {run.id} (status={run.status}) on thread {thread_id}")
+                    try:
+                        await asyncio.to_thread(
+                            self.client.beta.threads.runs.cancel,
+                            thread_id=thread_id,
+                            run_id=run.id
+                        )
+                    except Exception as cancel_err:
+                        logger.warning(f"Failed to cancel run {run.id}: {cancel_err}")
+
+            # Brief wait for cancellation to propagate
+            if any(r.status in ("queued", "in_progress", "requires_action") for r in runs.data):
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.warning(f"Error checking active runs on thread {thread_id}: {e}")
+
     async def add_message_to_thread(self, thread_id: str, content: str, role: str = "user"):
-        """Add message to existing thread"""
+        """Add message to existing thread, cancelling any active runs first."""
         if not self.client:
             raise Exception("OpenAI client not available")
+
+        # Cancel any active runs before adding a message
+        await self.cancel_active_runs(thread_id)
 
         # Run blocking OpenAI call in thread pool to avoid blocking event loop
         await asyncio.to_thread(
@@ -177,7 +256,7 @@ class ThreadManagementService:
             )
 
             # Wait for completion with timeout
-            return await self._wait_for_completion(run.id, thread_id)
+            return await self._wait_for_completion(run.id, thread_id, user_id)
 
         except asyncio.TimeoutError:
             logger.error(f"Timeout waiting for assistant run to complete for thread {thread_id}")
@@ -203,6 +282,8 @@ class ThreadManagementService:
                 result = await self._execute_store_user_memory(arguments)
             elif function_name == "analyze_conversation_pattern":
                 result = await self._execute_analyze_pattern(arguments)
+            elif function_name == "create_user_task":
+                result = await self._execute_create_user_task(arguments)
             else:
                 logger.error(f"Unknown function: {function_name}")
                 return False
@@ -301,13 +382,14 @@ class ThreadManagementService:
         
         return instructions.get(response_type, "Provide helpful accountability coaching.")
     
-    async def _wait_for_completion(self, run_id: str, thread_id: str) -> Dict[str, Any]:
+    async def _wait_for_completion(self, run_id: str, thread_id: str, user_id: str = None) -> Dict[str, Any]:
         """Wait for run completion and handle function calls with timeout"""
         if not self.client:
             raise Exception("OpenAI client not available")
 
         start_time = time.monotonic()
         poll_count = 0
+        executed_functions = []  # Track which functions were called during this run
 
         while True:
             # Check for timeout
@@ -328,15 +410,18 @@ class ThreadManagementService:
                 logger.debug(f"Polling run {run_id}: status={run.status}, elapsed={elapsed:.1f}s")
 
             if run.status == "completed":
-                return await asyncio.to_thread(self._process_completed_run, thread_id, run_id)
+                result = await asyncio.to_thread(self._process_completed_run, thread_id, run_id)
+                # Merge tracked function calls into the result
+                result["function_calls"] = executed_functions
+                return result
             elif run.status == "requires_action":
-                await self._handle_function_calls(run, thread_id)
+                await self._handle_function_calls(run, thread_id, executed_functions, user_id)
             elif run.status in ["failed", "cancelled", "expired"]:
                 raise Exception(f"Run failed: {run.status}")
 
             await self._sleep(1)
     
-    async def _handle_function_calls(self, run, thread_id: str):
+    async def _handle_function_calls(self, run, thread_id: str, executed_functions: List[Dict[str, Any]] = None, user_id: str = None):
         """Handle function calls from assistant"""
         if not self.client:
             return
@@ -348,6 +433,10 @@ class ThreadManagementService:
                 function_name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
 
+                # Override user_id with the real one (assistant may pass a placeholder)
+                if user_id and "user_id" in arguments:
+                    arguments["user_id"] = user_id
+
                 # Execute function
                 if function_name == "get_user_memory":
                     result = await self._execute_get_user_memory(arguments)
@@ -355,8 +444,17 @@ class ThreadManagementService:
                     result = await self._execute_store_user_memory(arguments)
                 elif function_name == "analyze_conversation_pattern":
                     result = await self._execute_analyze_pattern(arguments)
+                elif function_name == "create_user_task":
+                    result = await self._execute_create_user_task(arguments)
                 else:
                     result = {"error": f"Unknown function: {function_name}"}
+
+                # Track executed functions for the response
+                if executed_functions is not None:
+                    executed_functions.append({
+                        "name": function_name,
+                        "arguments": arguments
+                    })
 
                 tool_outputs.append({
                     "tool_call_id": tool_call.id,
@@ -441,6 +539,56 @@ class ThreadManagementService:
             logger.error(f"Error in analyze_conversation_pattern: {e}")
             return {"patterns": {}, "success": False, "error": str(e)}
     
+    async def _execute_create_user_task(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute create_user_task function - insert task into shared_todos"""
+        try:
+            supabase = get_supabase_client()
+            user_id = arguments["user_id"]
+            title = arguments["title"]
+            description = arguments.get("description")
+            priority = arguments.get("priority", "medium")
+            due_date = arguments.get("due_date")
+            coach_reasoning = arguments.get("coach_reasoning")
+
+            if priority not in ("low", "medium", "high", "urgent"):
+                priority = "medium"
+
+            now = datetime.now().isoformat()
+
+            todo_data = {
+                "user_id": user_id,
+                "title": title,
+                "created_by": "coach",
+                "status": "pending",
+                "priority": priority,
+                "created_at": now,
+                "updated_at": now,
+            }
+            if description:
+                todo_data["description"] = description
+            if due_date:
+                todo_data["due_date"] = due_date
+            if coach_reasoning:
+                todo_data["coach_reasoning"] = coach_reasoning
+
+            response = supabase.table("shared_todos").insert(todo_data).execute()
+
+            if response.data and len(response.data) > 0:
+                created = response.data[0]
+                logger.info(f"Created coach task '{title}' for user {user_id}")
+                return {
+                    "success": True,
+                    "task_id": created["id"],
+                    "title": title,
+                    "message": f"Task '{title}' has been added to the user's to-do list."
+                }
+
+            return {"success": False, "error": "Failed to insert task"}
+
+        except Exception as e:
+            logger.error(f"Error in create_user_task: {e}")
+            return {"success": False, "error": str(e)}
+
     def _process_completed_run(self, thread_id: str, run_id: str) -> Dict[str, Any]:
         """
         Process completed run to extract ONLY new messages from this run.

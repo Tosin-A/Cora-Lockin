@@ -11,7 +11,7 @@
 
 # Supabase Configuration (Production)
 EXPO_PUBLIC_SUPABASE_URL=https://ngcmutnfqelsqiuitcfw.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nY211dG5mcWVsc3FpdWl0Y2Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMjA4MDIsImV4cCI6MjA4MDY5NjgwMn0.C0kjJBs5UbiEdXhB3_Hwe_TADZ8VkuBf2VpdTTsCVNo
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 
 # 🚨 CRITICAL: Update this to your PRODUCTION API URL
 # Options:

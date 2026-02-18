@@ -83,7 +83,7 @@ class TestHealthInsightsEngine:
             'SLEEP_PATTERN',
             'ACTIVITY_CONSISTENCY',
             'ENERGY_WINDOWS',
-            'WEEKEND_EFFECT'
+            'CONSISTENCY'
         ]
 
         for pattern_type in expected_types:

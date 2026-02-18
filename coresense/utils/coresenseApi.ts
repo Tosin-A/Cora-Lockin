@@ -45,6 +45,38 @@ const API_URL = getApiUrl();
 // Log the API URL on startup for debugging
 console.log(`[coresenseApi] 🌐 Using API URL: ${API_URL} (Platform: ${Platform.OS}, DEV: ${__DEV__})`);
 
+// Server warmup tracking - Railway server sleeps after inactivity and needs
+// 15-30s to cold-start. This coordinates retry logic so all concurrent requests
+// wait behind a single warmup check instead of retrying independently.
+let _serverConfirmedAlive = false;
+let _warmupPromise: Promise<boolean> | null = null;
+
+async function warmupServer(): Promise<boolean> {
+  if (_serverConfirmedAlive) return true;
+  if (_warmupPromise) return _warmupPromise;
+
+  _warmupPromise = (async () => {
+    try {
+      console.log('[coresenseApi] 🔄 Server may be cold-starting, waiting for warmup...');
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 25000);
+      await fetch(`${API_URL}/api/v1/health`, { signal: controller.signal });
+      clearTimeout(tid);
+      // Any response (even errors) means the server process is running
+      _serverConfirmedAlive = true;
+      console.log('[coresenseApi] ✅ Server is awake');
+      return true;
+    } catch {
+      console.log('[coresenseApi] ⚠️ Server warmup failed');
+      return false;
+    } finally {
+      _warmupPromise = null;
+    }
+  })();
+
+  return _warmupPromise;
+}
+
 // Types for API responses
 export interface HomeData {
   lastCoachMessage: {
@@ -145,8 +177,18 @@ export interface Streaks {
 }
 
 // Helper to get auth token
+// Auth token cache - avoids hitting Supabase on every API call
+let _cachedToken: string | null = null;
+let _cachedTokenExpiresAt: number = 0;
+const TOKEN_CACHE_TTL_MS = 4 * 60 * 1000; // 4 minutes (tokens last 1 hour, refresh well before)
+
 async function getAuthToken(): Promise<string | null> {
-  console.log("[coresenseApi] 🔐 Getting auth session...");
+  // Return cached token if still valid
+  const now = Date.now();
+  if (_cachedToken && now < _cachedTokenExpiresAt) {
+    return _cachedToken;
+  }
+
   try {
     const {
       data: { session },
@@ -154,43 +196,55 @@ async function getAuthToken(): Promise<string | null> {
     } = await supabase.auth.getSession();
 
     if (error) {
-      console.log("[coresenseApi] ❌ Error getting session:", error.message);
+      console.log("[coresenseApi] Error getting session:", error.message);
+      _cachedToken = null;
       return null;
     }
 
     if (!session) {
-      console.log("[coresenseApi] ⚠️ No session found - user not logged in");
+      _cachedToken = null;
       return null;
     }
 
     const token = session.access_token;
-    console.log(
-      "[coresenseApi] 🔑 Auth token status:",
-      token ? `present (length: ${token.length})` : "missing from session",
-    );
 
     // Check if token is expired
     if (session.expires_at) {
       const expiresAt = new Date(session.expires_at * 1000);
-      const now = new Date();
-      if (expiresAt < now) {
-        console.log("[coresenseApi] ⚠️ Token expired at:", expiresAt.toISOString());
-        // Try to refresh the session
+      if (expiresAt < new Date()) {
         const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError || !refreshData.session) {
-          console.log("[coresenseApi] ❌ Failed to refresh session:", refreshError?.message);
+          _cachedToken = null;
           return null;
         }
-        console.log("[coresenseApi] ✅ Session refreshed successfully");
-        return refreshData.session.access_token;
+        _cachedToken = refreshData.session.access_token;
+        _cachedTokenExpiresAt = now + TOKEN_CACHE_TTL_MS;
+        return _cachedToken;
       }
     }
 
-    return token || null;
+    _cachedToken = token || null;
+    _cachedTokenExpiresAt = now + TOKEN_CACHE_TTL_MS;
+    return _cachedToken;
   } catch (err: any) {
-    console.log("[coresenseApi] ❌ Exception getting auth token:", err.message);
+    console.log("[coresenseApi] Exception getting auth token:", err.message);
+    _cachedToken = null;
     return null;
   }
+}
+
+// Clear token cache on auth state change (called from authStore)
+export function clearAuthTokenCache() {
+  _cachedToken = null;
+  _cachedTokenExpiresAt = 0;
+  _serverConfirmedAlive = false;
+}
+
+// Request deduplication - prevents duplicate simultaneous requests
+const _inflightRequests = new Map<string, Promise<any>>();
+
+function getDedupeKey(endpoint: string, method: string, body?: any): string {
+  return `${method}:${endpoint}:${body ? JSON.stringify(body) : ''}`;
 }
 
 /**
@@ -248,7 +302,7 @@ function categorizeNetworkError(error: any, _endpoint: string): {
   };
 }
 
-// Helper for API requests
+// Helper for API requests with deduplication for GET requests
 async function apiRequest<T>(
   endpoint: string,
   options: {
@@ -262,12 +316,40 @@ async function apiRequest<T>(
   errorCategory?: "network" | "timeout" | "auth" | "server" | "unknown";
   isRetryable?: boolean;
 }> {
+  const method = options.method || "GET";
+
+  // Deduplicate GET requests - if the same request is already in-flight, reuse it
+  if (method === "GET") {
+    const dedupeKey = getDedupeKey(endpoint, method);
+    const inflight = _inflightRequests.get(dedupeKey);
+    if (inflight) {
+      return inflight;
+    }
+    const promise = _apiRequestInner<T>(endpoint, options);
+    _inflightRequests.set(dedupeKey, promise);
+    promise.finally(() => _inflightRequests.delete(dedupeKey));
+    return promise;
+  }
+
+  return _apiRequestInner<T>(endpoint, options);
+}
+
+async function _apiRequestInner<T>(
+  endpoint: string,
+  options: {
+    method?: "GET" | "POST" | "PUT" | "DELETE";
+    body?: any;
+    timeout?: number;
+  } = {},
+  retryCount: number = 0,
+): Promise<{
+  data: T | null;
+  error: string | null;
+  errorCategory?: "network" | "timeout" | "auth" | "server" | "unknown";
+  isRetryable?: boolean;
+}> {
   const requestId = Math.random().toString(36).substring(7);
   const startTime = Date.now();
-
-  console.log(
-    `[coresenseApi] 📤 [${requestId}] ${options.method || "GET"} ${endpoint}`,
-  );
 
   try {
     const token = await getAuthToken();
@@ -277,7 +359,7 @@ async function apiRequest<T>(
       return { data: null, error: "Not authenticated", errorCategory: "auth" };
     }
 
-    console.log(`[coresenseApi] 🔑 [${requestId}] Token present, length: ${token.length}, starts with: ${token.substring(0, 20)}...`);
+    console.log(`[coresenseApi] 🔑 [${requestId}] Token present`);
 
     const timeoutMs = options.timeout || 10000; // Default 10 second timeout
     const controller = new AbortController();
@@ -305,6 +387,7 @@ async function apiRequest<T>(
       });
 
       clearTimeout(timeoutId);
+      _serverConfirmedAlive = true;
       const duration = Date.now() - startTime;
 
       console.log(
@@ -345,6 +428,18 @@ async function apiRequest<T>(
           apiUrl: API_URL,
         },
       );
+
+      // Auto-retry GET requests on timeout (server may be cold-starting on Railway).
+      // Wait for the shared warmup check so all concurrent requests coordinate
+      // behind a single health-check ping instead of retrying independently.
+      const reqMethod = options.method || "GET";
+      if (category === 'timeout' && retryCount < 1 && reqMethod === 'GET') {
+        const isWarm = await warmupServer();
+        if (isWarm) {
+          console.log(`[coresenseApi] 🔄 [${requestId}] Retrying after server warmup...`);
+          return _apiRequestInner<T>(endpoint, options, retryCount + 1);
+        }
+      }
 
       return { data: null, error: message, errorCategory: category, isRetryable };
     }
@@ -633,7 +728,7 @@ export async function getChatHistory(
   error: string | null;
 }> {
   return apiRequest(
-    `/api/v1/coach/history/${userId}?limit=${limit}&offset=${offset}`,
+    `/api/v1/coach/history?limit=${limit}&offset=${offset}`,
   );
 }
 
@@ -945,6 +1040,13 @@ export async function getMessageUsage(userId: string): Promise<{
     is_pro: boolean;
     messages_remaining: number;
     usage_percentage: number;
+    daily_used: number;
+    daily_limit: number;
+    daily_remaining: number;
+    weekly_used: number;
+    weekly_limit: number;
+    weekly_remaining: number;
+    limit_type: string | null;
   } | null;
   error: string | null;
 }> {
@@ -1369,6 +1471,9 @@ export const coresenseApi = {
   getNotificationPreferences,
   updateNotificationPreferences,
   sendTestNotification,
+
+  // Auth
+  clearAuthTokenCache,
 };
 
 export default coresenseApi;

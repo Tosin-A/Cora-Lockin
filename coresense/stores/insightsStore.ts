@@ -327,7 +327,9 @@ export const useInsightsStore = create<InsightsStore>()(
         insights: state.insights.filter((i) => !i.dismissed).slice(-20), // Keep last 20 non-dismissed insights
         weeklyInsights: state.weeklyInsights.slice(-4), // Keep last 4 weeks
         monthlyInsights: state.monthlyInsights.slice(-6), // Keep last 6 months
-        // Don't persist commitmentInsights - always fetch fresh
+        // Persist health insights for instant display during server cold starts
+        healthInsights: state.healthInsights,
+        healthInsightsLastFetchedAt: state.healthInsightsLastFetchedAt,
       }),
     }
   )

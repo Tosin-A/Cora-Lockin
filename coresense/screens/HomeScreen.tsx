@@ -6,7 +6,7 @@
  * All data comes from real user records - no mock or placeholder data.
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -43,6 +43,33 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { coresenseApi, HomeData } from '../utils/coresenseApi';
 import type { Todo } from '../types/todos';
 import { InsightType } from '../types/insights';
+
+// Constant map - moved outside component to avoid recreation on every render
+const TYPE_TO_CATEGORY: Record<string, 'sleep' | 'health' | 'productivity' | 'mood'> = {
+  [InsightType.BEHAVIORAL]: 'health',
+  [InsightType.PROGRESS]: 'productivity',
+  [InsightType.RISK]: 'health',
+};
+
+// Greeting arrays - moved outside component to avoid recreation
+const MORNING_GREETINGS = [
+  "Rise and grind",
+  "Morning, we move",
+  "Up already? Respect",
+  "Let's get after it",
+];
+const AFTERNOON_GREETINGS = [
+  "What's good",
+  "Long morning ahlie",
+  "Afternoon, we locked in",
+  "Energy still there",
+];
+const EVENING_GREETINGS = [
+  "We survived the day",
+  "Still focused",
+  "Night grind activated",
+  "Calm finish, yeah",
+];
 
 // TaskCard component for individual task items with completion animation
 interface TaskCardProps {
@@ -266,26 +293,8 @@ export default function HomeScreen() {
   // Greeting text - picks a random greeting based on time of day
   const pickGreeting = useCallback(() => {
     const hour = new Date().getHours();
-    const morningVibes = [
-      "Rise and grind",
-      "Morning, we move",
-      "Up already? Respect",
-      "Let's get after it",
-    ];
-    const afternoonVibes = [
-      "What's good",
-      "Long morning ahlie",
-      "Afternoon, we locked in",
-      "Energy still there",
-    ];
-    const eveningVibes = [
-      "We survived the day",
-      "Still focused",
-      "Night grind activated",
-      "Calm finish, yeah",
-    ];
     const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
-    return hour < 12 ? pick(morningVibes) : hour < 18 ? pick(afternoonVibes) : pick(eveningVibes);
+    return hour < 12 ? pick(MORNING_GREETINGS) : hour < 18 ? pick(AFTERNOON_GREETINGS) : pick(EVENING_GREETINGS);
   }, []);
 
   const [greeting, setGreeting] = useState(pickGreeting);
@@ -323,6 +332,8 @@ export default function HomeScreen() {
         }
       } else if (result.data) {
         setHomeData(result.data);
+        // Cache for instant display on next cold start
+        AsyncStorage.setItem('home_data_cache', JSON.stringify(result.data)).catch(() => {});
       }
     } catch (err: any) {
       // Unexpected error (shouldn't happen with proper error handling in apiRequest)
@@ -354,9 +365,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('[HomeScreen] Focus effect triggered, user:', user?.id);
-      // Fire sync in background (throttled internally) - don't await
       if (user) {
-        syncToSupabase(user.id);
         recordDailyStreak();
       }
 
@@ -382,7 +391,7 @@ export default function HomeScreen() {
           }
           // Afternoon check-in nudge
           else if (!hasCheckedInToday() && hour >= 12 && hour < 20) {
-            setGreetingPopupMessage("Quick check-in pending 👀");
+            setGreetingPopupMessage("Quick checkin pending 👀");
           }
           // Strong streak
           else if (streak >= 7) {
@@ -395,14 +404,31 @@ export default function HomeScreen() {
         });
       }
 
-      // Fetch data in parallel - don't block on sync
+      // Fetch general data and todos immediately
       fetchData();
       fetchTodos();
-      fetchHealthInsights(); // Uses cache if fresh
+      // Sync health data first, then fetch insights so charts have latest data
+      const syncThenInsights = async () => {
+        if (user) {
+          await syncToSupabase(user.id);
+        }
+        await fetchHealthInsights();
+      };
+      syncThenInsights();
     }, [fetchData, fetchTodos, fetchHealthInsights, syncToSupabase, user, recordDailyStreak, pickGreeting])
   );
 
   useEffect(() => {
+    // Load cached home data for instant display during server cold starts
+    AsyncStorage.getItem('home_data_cache').then((cached) => {
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          setHomeData((current) => current || parsed);
+        } catch {}
+      }
+    });
+
     // Load check-in status on mount
     loadLastCheckInDate();
 
@@ -433,12 +459,12 @@ export default function HomeScreen() {
     setRefreshing(true);
     setGreeting(pickGreeting());
     try {
-      // Force sync and fetch in parallel on pull-to-refresh
-      await Promise.all([
-        user ? syncToSupabase(user.id, true) : Promise.resolve(),
-        fetchData(false),
-        fetchHealthInsights(true),
-      ]);
+      // Force sync first, then fetch insights with latest data
+      fetchData(false);
+      if (user) {
+        await syncToSupabase(user.id, true);
+      }
+      await fetchHealthInsights(true);
     } catch (e) {
       console.log('[HomeScreen] Refresh failed:', e);
     }
@@ -503,20 +529,30 @@ export default function HomeScreen() {
   };
 
   // Handle completing a task with visual feedback
+  const completionTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    const timers = completionTimers.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
+
   const handleCompleteTask = useCallback((todoId: string) => {
-    // Add to completing set for immediate visual feedback
     setCompletingTasks(prev => new Set(prev).add(todoId));
 
-    // Call the store update (which now has optimistic update)
     updateTodoStatus(todoId, 'completed').finally(() => {
-      // Remove from completing set after a short delay for smooth transition
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         setCompletingTasks(prev => {
           const next = new Set(prev);
           next.delete(todoId);
           return next;
         });
+        completionTimers.current.delete(timer);
       }, 300);
+      completionTimers.current.add(timer);
     });
   }, [updateTodoStatus]);
 
@@ -525,56 +561,37 @@ export default function HomeScreen() {
     return await logBatchMetrics(metrics);
   };
 
-  // Derive today's insight from health insights if backend doesn't provide one
-  const getTodayInsight = () => {
-    // Use backend-provided insight if available
+  // Derive today's insight from health insights - memoized to avoid recalculating every render
+  const todayInsight = useMemo(() => {
     if (homeData?.todayInsight) {
       return homeData.todayInsight;
     }
 
-    // Fall back to health insights from the store
     if (!healthInsights?.has_enough_data || !healthInsights?.patterns?.length) {
       return null;
     }
 
     const patterns = healthInsights.patterns;
-
-    // Dynamic selection: rotate through patterns based on day + hour
-    // This ensures variety throughout the day and across days
     const now = new Date();
     const dayOfYear = Math.floor(
       (now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24)
     );
-    const hourBlock = Math.floor(now.getHours() / 6); // Changes every 6 hours (4x per day)
+    const hourBlock = Math.floor(now.getHours() / 6);
 
-    // Prioritize new insights first, then rotate through all
     const newPatterns = patterns.filter(p => p.is_new);
     const seenPatterns = patterns.filter(p => !p.is_new);
 
     let selectedPattern;
-
     if (newPatterns.length > 0) {
-      // Show new patterns first, rotating through them
-      const newIndex = (dayOfYear + hourBlock) % newPatterns.length;
-      selectedPattern = newPatterns[newIndex];
+      selectedPattern = newPatterns[(dayOfYear + hourBlock) % newPatterns.length];
     } else if (seenPatterns.length > 0) {
-      // Rotate through seen patterns
-      const seenIndex = (dayOfYear + hourBlock) % seenPatterns.length;
-      selectedPattern = seenPatterns[seenIndex];
+      selectedPattern = seenPatterns[(dayOfYear + hourBlock) % seenPatterns.length];
     } else {
       selectedPattern = patterns[0];
     }
 
     if (!selectedPattern) return null;
 
-    // Map insight type to category
-    const typeToCategory: Record<string, 'sleep' | 'health' | 'productivity' | 'mood'> = {
-      [InsightType.BEHAVIORAL]: 'health',
-      [InsightType.PROGRESS]: 'productivity',
-      [InsightType.RISK]: 'health',
-    };
-
-    // Determine category based on pattern evidence type or insight type
     let category: 'sleep' | 'health' | 'productivity' | 'mood' = 'health';
     const evidenceType = selectedPattern.evidence?.type?.toLowerCase() || '';
 
@@ -585,7 +602,7 @@ export default function HomeScreen() {
     } else if (evidenceType.includes('energy') || evidenceType.includes('productivity')) {
       category = 'productivity';
     } else {
-      category = typeToCategory[selectedPattern.type as string] || 'health';
+      category = TYPE_TO_CATEGORY[selectedPattern.type as string] || 'health';
     }
 
     return {
@@ -595,9 +612,7 @@ export default function HomeScreen() {
       category,
       actionable: !!selectedPattern.action_steps?.length,
     };
-  };
-
-  const todayInsight = getTodayInsight();
+  }, [homeData?.todayInsight, healthInsights]);
 
 
 

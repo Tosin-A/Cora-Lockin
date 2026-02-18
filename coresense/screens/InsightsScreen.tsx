@@ -64,27 +64,28 @@ export default function InsightsScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch insights on focus (sync runs in background, not blocking)
+  // Sync health data first, then fetch insights so charts reflect latest data
   useFocusEffect(
     useCallback(() => {
-      console.log('[InsightsScreen] Focus effect - fetching insights');
-      // Fire sync in background (throttled internally) - don't await
-      if (permissionsGranted && user?.id) {
-        syncToSupabase(user.id);
-      }
-      // Fetch insights immediately (uses cache if fresh)
-      fetchHealthInsights();
+      const loadInsights = async () => {
+        console.log('[InsightsScreen] Focus effect - syncing then fetching insights');
+        if (permissionsGranted && user?.id) {
+          await syncToSupabase(user.id);
+        }
+        await fetchHealthInsights();
+      };
+      loadInsights();
     }, [fetchHealthInsights, syncToSupabase, permissionsGranted, user?.id])
   );
 
-  // Pull to refresh - force sync and fetch in parallel
+  // Pull to refresh - sync first, then fetch fresh insights
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
-        permissionsGranted && user?.id ? syncToSupabase(user.id, true) : Promise.resolve(),
-        fetchHealthInsights(true),
-      ]);
+      if (permissionsGranted && user?.id) {
+        await syncToSupabase(user.id, true);
+      }
+      await fetchHealthInsights(true);
     } catch (err) {
       console.error('Refresh error:', err);
     } finally {
@@ -93,7 +94,7 @@ export default function InsightsScreen() {
   };
 
   // Handle asking coach about an insight
-  const handleAskCoach = (insight: InsightData) => {
+  const handleAskCoach = useCallback((insight: InsightData) => {
     navigation.navigate('Coach', {
       context: {
         type: 'insight',
@@ -104,17 +105,17 @@ export default function InsightsScreen() {
         actionSteps: insight.action_steps,
       },
     });
-  };
+  }, [navigation]);
 
   // Handle marking insight as helpful
-  const handleHelpful = async (insightId: string) => {
+  const handleHelpful = useCallback(async (insightId: string) => {
     await recordReaction(insightId, true);
-  };
+  }, [recordReaction]);
 
   // Handle dismissing insight
-  const handleDismiss = async (insightId: string) => {
+  const handleDismiss = useCallback(async (insightId: string) => {
     await dismissInsight(insightId);
-  };
+  }, [dismissInsight]);
 
   // Sticky Header Component
   const StickyHeader = ({ subtitle }: { subtitle: string }) => (
@@ -186,7 +187,7 @@ export default function InsightsScreen() {
 
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <StickyHeader subtitle="Health-first insights" />
+        <StickyHeader subtitle="Your health insights" />
 
         <ScrollView
           style={styles.scrollView}

@@ -1,12 +1,16 @@
 /**
- * Message Limit Store - State management for message usage tracking
- * Tracks 10-message limit for free users with pro upgrade functionality
+ * Message Limit Store
+ * Tracks daily/weekly message limits.
+ * Free: 10/day, 30/week | Pro: 20/day, 100/week
  */
 
 import { create } from 'zustand';
-import { Alert } from 'react-native';
+import { Linking } from 'react-native';
 import { coresenseApi } from '../utils/coresenseApi';
 import { useAuthStore } from './authStore';
+
+// Placeholder - user will provide the real URL
+const UPGRADE_URL = 'https://coresense.app/upgrade';
 
 interface MessageLimitState {
   // State
@@ -15,17 +19,28 @@ interface MessageLimitState {
   isPro: boolean;
   messagesRemaining: number;
   usagePercentage: number;
+  dailyUsed: number;
+  dailyLimit: number;
+  dailyRemaining: number;
+  weeklyUsed: number;
+  weeklyLimit: number;
+  weeklyRemaining: number;
+  limitType: string | null; // "daily" | "weekly" | null
   loading: boolean;
   error: string | null;
-  
+  showPaywall: boolean;
+  paywallMessage: string;
+
   // Actions
   loadUsageStats: () => Promise<void>;
-  checkLimit: () => boolean;
   canSendMessage: () => boolean;
-  getUpgradePrompt: () => string;
   showUpgradePrompt: () => void;
-  upgradeToPro: () => Promise<boolean>;
+  hidePaywall: () => void;
+  openUpgradePage: () => void;
+  setUpgradeUrl: (url: string) => void;
 }
+
+let _upgradeUrl = UPGRADE_URL;
 
 export const useMessageLimitStore = create<MessageLimitState>((set, get) => ({
   // Initial state
@@ -34,59 +49,59 @@ export const useMessageLimitStore = create<MessageLimitState>((set, get) => ({
   isPro: false,
   messagesRemaining: 10,
   usagePercentage: 0,
+  dailyUsed: 0,
+  dailyLimit: 10,
+  dailyRemaining: 10,
+  weeklyUsed: 0,
+  weeklyLimit: 30,
+  weeklyRemaining: 30,
+  limitType: null,
   loading: false,
   error: null,
+  showPaywall: false,
+  paywallMessage: '',
 
-  // Actions
   loadUsageStats: async () => {
     set({ loading: true, error: null });
-    
+
     try {
       const { user } = useAuthStore.getState();
       if (!user) {
-        console.log('No authenticated user, skipping usage stats load');
         set({ loading: false });
         return;
       }
 
-      console.log('Loading usage stats for user:', user.id);
       const { data, error } = await coresenseApi.getMessageUsage(user.id);
-      
+
       if (error) {
-        console.error('Failed to load usage stats:', error);
-        set({ 
-          error: error,
-          loading: false 
-        });
+        set({ error, loading: false });
         return;
       }
 
       if (data) {
-        console.log('Usage stats loaded:', data);
         set({
           messagesUsed: data.messages_used,
           messagesLimit: data.messages_limit,
           isPro: data.is_pro,
-          messagesRemaining: typeof data.messages_remaining === 'number' 
-            ? data.messages_remaining 
-            : (data.is_pro ? 999 : Math.max(0, data.messages_limit - data.messages_used)),
-          usagePercentage: Math.min(100, (data.messages_used / data.messages_limit) * 100),
+          messagesRemaining: data.messages_remaining,
+          dailyUsed: data.daily_used ?? 0,
+          dailyLimit: data.daily_limit ?? 10,
+          dailyRemaining: data.daily_remaining ?? 10,
+          weeklyUsed: data.weekly_used ?? 0,
+          weeklyLimit: data.weekly_limit ?? 30,
+          weeklyRemaining: data.weekly_remaining ?? 30,
+          limitType: data.limit_type ?? null,
+          usagePercentage: Math.min(100, (data.daily_used / data.daily_limit) * 100),
           loading: false,
-          error: null
+          error: null,
         });
       }
     } catch (error: any) {
-      console.error('Error loading usage stats:', error);
-      set({ 
+      set({
         error: error.message || 'Failed to load usage stats',
-        loading: false 
+        loading: false,
       });
     }
-  },
-
-  checkLimit: () => {
-    const { isPro, messagesRemaining } = get();
-    return isPro || messagesRemaining > 0;
   },
 
   canSendMessage: () => {
@@ -94,117 +109,46 @@ export const useMessageLimitStore = create<MessageLimitState>((set, get) => ({
     return isPro || messagesRemaining > 0;
   },
 
-  getUpgradePrompt: () => {
-    const { messagesUsed, messagesLimit, isPro } = get();
-    
-    if (isPro) {
-      return 'You have unlimited messages with Pro!';
-    }
-    
-    if (messagesUsed >= messagesLimit) {
-      return `You've used all ${messagesLimit} free messages. Upgrade to Pro for unlimited messages!`;
-    }
-    
-    const remaining = messagesLimit - messagesUsed;
-    return `You've used ${messagesUsed}/${messagesLimit} free messages. ${remaining} remaining. Upgrade to Pro for unlimited messages!`;
-  },
-
   showUpgradePrompt: () => {
-    const { messagesUsed, messagesLimit, isPro, upgradeToPro } = get();
-    
-    if (isPro) {
-      Alert.alert(
-        'Pro Plan',
-        'You already have unlimited messages with Pro!',
-        [{ text: 'OK' }]
-      );
-      return;
+    const { dailyUsed, dailyLimit, weeklyUsed, weeklyLimit } = get();
+
+    let message: string;
+    if (dailyUsed >= dailyLimit) {
+      message = `You've used all ${dailyLimit} messages for today. Upgrade to Pro for 20 messages per day and 100 per week.`;
+    } else if (weeklyUsed >= weeklyLimit) {
+      message = `You've used all ${weeklyLimit} messages this week. Upgrade to Pro for 20 messages per day and 100 per week.`;
+    } else {
+      message = 'Upgrade to Pro for more messages.';
     }
-    
-    const remaining = messagesLimit - messagesUsed;
-    
-    Alert.alert(
-      'Upgrade to Pro',
-      `${get().getUpgradePrompt()}\\n\\nPro features:\\n• Unlimited messages\\n• Priority support\\n• Advanced coach features\\n• Early access to new features`,
-      [
-        { 
-          text: 'Maybe Later', 
-          style: 'cancel',
-          onPress: () => console.log('User chose to upgrade later')
-        },
-        { 
-          text: 'Upgrade Now', 
-          onPress: async () => {
-            console.log('User wants to upgrade to Pro');
-            const success = await upgradeToPro();
-            if (success) {
-              Alert.alert(
-                'Welcome to Pro! 🎉',
-                'You now have unlimited messages. Enjoy your enhanced coaching experience!',
-                [{ text: 'Awesome!' }]
-              );
-            }
-          }
-        }
-      ]
-    );
+
+    set({ showPaywall: true, paywallMessage: message });
   },
 
-  upgradeToPro: async () => {
-    set({ loading: true, error: null });
-    
-    try {
-      const { user } = useAuthStore.getState();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
+  hidePaywall: () => {
+    set({ showPaywall: false });
+  },
 
-      console.log('Upgrading user to Pro:', user.id);
-      const { success, error } = await coresenseApi.upgradeToPro(user.id);
-      
-      if (error) {
-        console.error('Failed to upgrade to Pro:', error);
-        set({ 
-          error: error,
-          loading: false 
-        });
-        return false;
-      }
+  openUpgradePage: () => {
+    Linking.openURL(_upgradeUrl);
+  },
 
-      if (success) {
-        console.log('Successfully upgraded to Pro');
-        // Refresh usage stats to reflect Pro status
-        await get().loadUsageStats();
-        set({ loading: false });
-        return true;
-      } else {
-        throw new Error('Upgrade failed');
-      }
-      
-    } catch (error: any) {
-      console.error('Error upgrading to Pro:', error);
-      set({ 
-        error: error.message || 'Failed to upgrade to Pro',
-        loading: false 
-      });
-      return false;
-    }
+  setUpgradeUrl: (url: string) => {
+    _upgradeUrl = url;
   },
 }));
 
-// Helper hook for components that need to react to usage changes
+// Helper hook for components
 export const useMessageLimit = () => {
   const store = useMessageLimitStore();
-  
+
   return {
     ...store,
-    // Computed values
     isNearLimit: store.usagePercentage >= 80,
-    isAtLimit: store.messagesUsed >= store.messagesLimit,
-    progressColor: store.isPro 
-      ? '#8B5CF6' // Purple for Pro
-      : store.usagePercentage >= 80 
-        ? '#F59E0B' // Orange for near limit
-        : '#10B981', // Green for safe
+    isAtLimit: store.messagesRemaining <= 0,
+    progressColor: store.isPro
+      ? '#8B5CF6'
+      : store.usagePercentage >= 80
+        ? '#F59E0B'
+        : '#10B981',
   };
 };

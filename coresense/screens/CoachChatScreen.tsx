@@ -3,7 +3,7 @@
  * Main chat interface with real-time messaging, streaming responses, and quick actions
  */
 
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   Keyboard,
   Animated,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRoute, RouteProp } from "@react-navigation/native";
@@ -28,6 +29,7 @@ import TypingIndicator from "../components/TypingIndicator";
 import { useChatStore } from "../stores/chatStore";
 import { useUserStore } from "../stores/userStore";
 import { useInsightsStore } from "../stores/insightsStore";
+import { useMessageLimitStore } from "../stores/messageLimitStore";
 
 // Route params type for insight context
 type CoachChatRouteParams = {
@@ -65,8 +67,24 @@ export default function CoachChatScreen({ navigation }: any) {
 
   const { profile } = useUserStore();
   const { generateInsightFromChat } = useInsightsStore();
+  const {
+    showPaywall,
+    paywallMessage,
+    hidePaywall,
+    openUpgradePage,
+    messagesRemaining,
+    dailyRemaining,
+    weeklyRemaining,
+    isPro,
+    loadUsageStats,
+  } = useMessageLimitStore();
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // Load usage stats on mount
+  useEffect(() => {
+    loadUsageStats();
+  }, []);
 
   // Generate pre-filled message from insight context
   const initialMessage = useMemo(() => {
@@ -143,21 +161,19 @@ export default function CoachChatScreen({ navigation }: any) {
     }
   }, [messages]);
 
-  const handleSendMessage = async (messageText: string) => {
+  const handleSendMessage = useCallback(async (messageText: string) => {
     try {
       await sendMessage(messageText);
-
-      // Generate insight from chat message if it contains relevant keywords
       await generateInsightFromChat(messageText, "productivity");
+      // Refresh usage stats after sending
+      loadUsageStats();
     } catch (error: any) {
       Alert.alert("Error", "Failed to send message. Please try again.");
     }
-  };
+  }, [sendMessage, generateInsightFromChat, loadUsageStats]);
 
-  const handleQuickAction = async (actionId: string) => {
+  const handleQuickAction = useCallback(async (actionId: string) => {
     completeQuickAction(actionId);
-
-    // Generate relevant insight based on action type
     const action = quickActions.find((a) => a.id === actionId);
     if (action) {
       await generateInsightFromChat(
@@ -165,7 +181,7 @@ export default function CoachChatScreen({ navigation }: any) {
         action.category
       );
     }
-  };
+  }, [completeQuickAction, quickActions, generateInsightFromChat]);
 
   const renderMessage = ({ item, index }: { item: any; index: number }) => {
     const prevMessage = messages[index - 1];
@@ -332,18 +348,100 @@ export default function CoachChatScreen({ navigation }: any) {
           </View>
         )}
 
+        {/* Messages remaining indicator */}
+        {!isPro && messagesRemaining <= 5 && messagesRemaining > 0 && (
+          <View style={[styles.remainingBanner, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+            <Text style={[styles.remainingText, { color: colors.textSecondary }]}>
+              {dailyRemaining <= weeklyRemaining
+                ? `${dailyRemaining} message${dailyRemaining !== 1 ? 's' : ''} left today`
+                : `${weeklyRemaining} message${weeklyRemaining !== 1 ? 's' : ''} left this week`}
+            </Text>
+          </View>
+        )}
+
         {/* Chat Input */}
         <View style={styles.inputContainer}>
           <ChatInput
             onSendMessage={handleSendMessage}
             quickActions={quickActions}
             onQuickActionPress={handleQuickAction}
-            disabled={sending || loading}
-            placeholder="Chat to me"
+            disabled={sending || loading || messagesRemaining <= 0}
+            placeholder={messagesRemaining <= 0 ? "Message limit reached" : "Chat to me"}
             initialMessage={initialMessage}
           />
         </View>
       </KeyboardAvoidingView>
+
+      {/* Paywall Modal */}
+      <Modal
+        visible={showPaywall}
+        transparent
+        animationType="fade"
+        onRequestClose={hidePaywall}
+      >
+        <View style={styles.paywallOverlay}>
+          <View style={[styles.paywallCard, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity
+              style={styles.paywallClose}
+              onPress={hidePaywall}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            <View style={[styles.paywallIcon, { backgroundColor: colors.primaryMuted || '#EDE9FE' }]}>
+              <Ionicons name="lock-closed-outline" size={32} color={colors.primary} />
+            </View>
+
+            <Text style={[styles.paywallTitle, { color: colors.textPrimary }]}>
+              Message Limit Reached
+            </Text>
+
+            <Text style={[styles.paywallBody, { color: colors.textSecondary }]}>
+              {paywallMessage}
+            </Text>
+
+            <View style={styles.paywallFeatures}>
+              <View style={styles.paywallFeatureRow}>
+                <Ionicons name="checkmark" size={18} color={colors.primary} />
+                <Text style={[styles.paywallFeatureText, { color: colors.textPrimary }]}>
+                  20 messages per day
+                </Text>
+              </View>
+              <View style={styles.paywallFeatureRow}>
+                <Ionicons name="checkmark" size={18} color={colors.primary} />
+                <Text style={[styles.paywallFeatureText, { color: colors.textPrimary }]}>
+                  100 messages per week
+                </Text>
+              </View>
+              <View style={styles.paywallFeatureRow}>
+                <Ionicons name="checkmark" size={18} color={colors.primary} />
+                <Text style={[styles.paywallFeatureText, { color: colors.textPrimary }]}>
+                  Priority coaching responses
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.paywallButton, { backgroundColor: colors.primary }]}
+              onPress={openUpgradePage}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.paywallButtonText}>Upgrade to Pro</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.paywallLaterButton}
+              onPress={hidePaywall}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.paywallLaterText, { color: colors.textTertiary }]}>
+                Maybe later
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -492,5 +590,90 @@ const styles = StyleSheet.create({
   typingIndicatorContainer: {
     marginBottom: Spacing.md,
     paddingHorizontal: Spacing.sm,
+  },
+
+  // Remaining messages banner
+  remainingBanner: {
+    paddingVertical: 6,
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  remainingText: {
+    ...Typography.caption,
+    fontSize: 12,
+  },
+
+  // Paywall modal
+  paywallOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  paywallCard: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+  },
+  paywallClose: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+  },
+  paywallIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  paywallTitle: {
+    ...Typography.h2,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  paywallBody: {
+    ...Typography.body,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  paywallFeatures: {
+    alignSelf: 'stretch',
+    marginBottom: 24,
+    gap: 12,
+  },
+  paywallFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  paywallFeatureText: {
+    ...Typography.body,
+    fontSize: 15,
+  },
+  paywallButton: {
+    alignSelf: 'stretch',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  paywallButtonText: {
+    ...Typography.button,
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  paywallLaterButton: {
+    paddingVertical: 8,
+  },
+  paywallLaterText: {
+    ...Typography.body,
+    fontSize: 14,
   },
 });

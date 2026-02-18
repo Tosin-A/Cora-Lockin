@@ -96,7 +96,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
     });
 
     const expoPushToken = tokenData.data;
-    console.log('[notificationService] Expo push token obtained:', expoPushToken);
+    console.log('[notificationService] Expo push token obtained');
 
     // Register token with backend for server-side push notifications
     await registerTokenWithBackend(expoPushToken);
