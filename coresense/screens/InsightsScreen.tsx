@@ -182,20 +182,18 @@ export default function InsightsScreen() {
 
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <StickyHeader subtitle="Your health insights" />
+        <Header subtitle="Your health insights" />
 
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[
-            styles.content,
-            { paddingTop: insets.top + 80 },
-          ]}
+          contentContainerStyle={styles.content}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
               tintColor={colors.primary}
-              progressViewOffset={insets.top + 80}
+              title="Pull down to refresh"
+              titleColor={colors.textTertiary}
             />
           }
         >
@@ -243,14 +241,13 @@ export default function InsightsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StickyHeader subtitle="Your health patterns" />
+      <Header subtitle="Your health patterns" />
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + 80,
             paddingBottom: Math.max(insets.bottom, 16) + 100,
           },
         ]}
@@ -259,8 +256,9 @@ export default function InsightsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={Colors.primary}
-            progressViewOffset={insets.top + 80}
+            tintColor={colors.primary}
+            title="Pull down to refresh"
+            titleColor={colors.textTertiary}
           />
         }
       >
@@ -336,23 +334,12 @@ const styles = StyleSheet.create({
     padding: Layout.screenPadding,
   },
 
-  // Sticky Header
-  stickyHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
+  // Header
+  header: {
     paddingHorizontal: Layout.screenPadding,
     paddingBottom: Spacing.md,
-    borderBottomWidth: 0.5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.border,
-  },
-  headerBg: {
-    backgroundColor: 'rgba(248, 248, 250, 0.97)',
-  },
-  headerContent: {
-    zIndex: 1,
   },
   title: {
     ...Typography.h1,

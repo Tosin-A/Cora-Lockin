@@ -659,6 +659,8 @@ export default function HomeScreen() {
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={colors.primary}
+            title="Pull down to refresh"
+            titleColor={colors.textTertiary}
           />
         }
       >
