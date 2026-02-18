@@ -19,8 +19,8 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      mode: 'light' as ThemeMode,
-      isDark: false,
+      mode: 'dark' as ThemeMode,
+      isDark: true,
 
       setMode: (mode: ThemeMode) => {
         // For now, 'system' defaults to light

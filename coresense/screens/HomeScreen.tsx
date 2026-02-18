@@ -387,19 +387,19 @@ export default function HomeScreen() {
 
           // First ever entry (no streak + no last activity)
           if (!streakData.lastActivityDate && streak === 0) {
-            setGreetingPopupMessage("Welcome — let's build momentum from today.");
+            setGreetingPopupMessage("Welcome in, time to Lock In.");
           }
           // Afternoon check-in nudge
           else if (!hasCheckedInToday() && hour >= 12 && hour < 20) {
-            setGreetingPopupMessage("Quick checkin pending 👀");
+            setGreetingPopupMessage("You haven't checked in yet today, sort that out yeah");
           }
           // Strong streak
           else if (streak >= 7) {
-            setGreetingPopupMessage(`${streak} day streak is serious.`);
+            setGreetingPopupMessage(`${streak} days on the grinf, proper consistency that.`);
           }
           // Active streak
           else if (streak > 0 && streak < 7) {
-            setGreetingPopupMessage("Keep the streak alive.");
+            setGreetingPopupMessage("Streak's still going, keep it moving.");
           }
         });
       }

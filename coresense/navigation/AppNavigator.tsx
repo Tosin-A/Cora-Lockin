@@ -174,8 +174,10 @@ export default function AppNavigator() {
               isLoading: false,
             });
           } else {
-            // No session, set loading to false
-            useAuthStore.setState({ isLoading: false });
+            // No session — clear any stale stored credentials
+            // This prevents "Invalid Refresh Token" errors on subsequent starts
+            await supabase.auth.signOut({ scope: 'local' });
+            useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
           }
         }
         return;
