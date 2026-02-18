@@ -12,6 +12,8 @@ import {
   Platform,
   ScrollView,
   Alert,
+  TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Spacing, Typography } from '../constants/theme';
@@ -26,7 +28,7 @@ import { handleOAuthError } from '../utils/oauth';
 export default function AuthScreen() {
   const navigation = useNavigation();
   const { colors } = useTheme();
-  const { signIn, signUp, signInWithGoogle, isLoading, googleLoading } = useAuthStore();
+  const { signIn, signUp, signInWithGoogle, resetPassword, isLoading, googleLoading } = useAuthStore();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,6 +37,7 @@ export default function AuthScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [generalError, setGeneralError] = useState('');
   const [googleError, setGoogleError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -141,6 +144,46 @@ export default function AuthScreen() {
     }
   };
 
+  const handleForgotPassword = () => {
+    const resetEmail = email.trim().toLowerCase();
+
+    if (!resetEmail || !validateEmail(resetEmail)) {
+      Alert.alert(
+        'Enter Your Email',
+        'Please enter your email address in the email field above, then tap "Forgot Password?" again.',
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Reset Password',
+      `Send a password reset link to ${resetEmail}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            setResetLoading(true);
+            try {
+              await resetPassword(resetEmail);
+              Alert.alert(
+                'Check Your Email',
+                'If an account exists with that email, you\'ll receive a password reset link shortly.',
+              );
+            } catch (err: any) {
+              Alert.alert(
+                'Reset Failed',
+                err?.message || 'Unable to send reset email. Please try again.',
+              );
+            } finally {
+              setResetLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const dynamicStyles = {
     container: {
       backgroundColor: colors.background,
@@ -212,7 +255,23 @@ export default function AuthScreen() {
             error={passwordError}
           />
 
-          {/* Continue with Google Button - Placed after password field */}
+          {!isSignUp && (
+            <TouchableOpacity
+              onPress={handleForgotPassword}
+              disabled={resetLoading}
+              style={styles.forgotPassword}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {resetLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
+                  Forgot Password?
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+
           <GoogleSignInButton
             onPress={handleGoogleSignIn}
             loading={googleLoading}
@@ -305,5 +364,15 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     marginTop: Spacing.xs,
     textAlign: 'center',
+  },
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginTop: Spacing.xs,
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  forgotPasswordText: {
+    ...Typography.bodySmall,
+    fontWeight: '500',
   },
 });

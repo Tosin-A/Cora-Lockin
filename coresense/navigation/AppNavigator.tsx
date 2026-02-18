@@ -16,6 +16,7 @@ import { Colors, Spacing } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import * as Linking from 'expo-linking';
 import { supabase } from '../utils/supabase';
+import { useSubscriptionStore } from '../stores/subscriptionStore';
 import { initializeHealthKit } from '../utils/healthService';
 import {
   setNotificationNavigationRef,
@@ -238,6 +239,17 @@ export default function AppNavigator() {
     const handleDeepLink = async (event: { url: string }) => {
       const { url } = event;
       console.log('[AppNavigator] Deep link received:', url);
+
+      if (url.includes('coresense://subscription-success')) {
+        console.log('[AppNavigator] Subscription success callback');
+        useSubscriptionStore.getState().handleSubscriptionSuccess();
+        return;
+      }
+
+      if (url.includes('coresense://subscription-cancel')) {
+        console.log('[AppNavigator] Subscription checkout cancelled');
+        return;
+      }
       
       // Check if this is an OAuth callback
       if (url.includes('coresense://auth/callback')) {

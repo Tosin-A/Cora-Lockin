@@ -30,6 +30,7 @@ import { useChatStore } from "../stores/chatStore";
 import { useUserStore } from "../stores/userStore";
 import { useInsightsStore } from "../stores/insightsStore";
 import { useMessageLimitStore } from "../stores/messageLimitStore";
+import { useSubscriptionStore } from "../stores/subscriptionStore";
 
 // Route params type for insight context
 type CoachChatRouteParams = {
@@ -71,13 +72,14 @@ export default function CoachChatScreen({ navigation }: any) {
     showPaywall,
     paywallMessage,
     hidePaywall,
-    openUpgradePage,
     messagesRemaining,
     dailyRemaining,
     weeklyRemaining,
     isPro,
     loadUsageStats,
   } = useMessageLimitStore();
+
+  const { startCheckout, checkoutLoading } = useSubscriptionStore();
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
@@ -424,10 +426,15 @@ export default function CoachChatScreen({ navigation }: any) {
 
             <TouchableOpacity
               style={[styles.paywallButton, { backgroundColor: colors.primary }]}
-              onPress={openUpgradePage}
+              onPress={startCheckout}
               activeOpacity={0.8}
+              disabled={checkoutLoading}
             >
-              <Text style={styles.paywallButtonText}>Upgrade to Pro</Text>
+              {checkoutLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.paywallButtonText}>Upgrade to Pro - £8.99/mo</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity

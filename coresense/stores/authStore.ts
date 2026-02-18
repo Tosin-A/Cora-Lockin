@@ -65,11 +65,14 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   googleLoading: boolean;
+  deletingAccount: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   checkAuth: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -77,6 +80,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
   isAuthenticated: false,
   googleLoading: false,
+  deletingAccount: false,
 
   checkAuth: async () => {
     try {
@@ -343,12 +347,73 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch (error: any) {
       console.error("[AuthStore] Sign out exception:", error);
-      // Ensure state is cleared even on error
       set({
         user: null,
         isAuthenticated: false,
         isLoading: false,
       });
+    }
+  },
+
+  resetPassword: async (email: string) => {
+    try {
+      console.log("[AuthStore] Sending password reset email to:", email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: "coresense://auth/callback",
+      });
+
+      if (error) {
+        console.error("[AuthStore] Password reset error:", error);
+        throw new Error(error.message);
+      }
+
+      console.log("[AuthStore] Password reset email sent");
+    } catch (error: any) {
+      console.error("[AuthStore] Password reset exception:", error);
+      throw error;
+    }
+  },
+
+  deleteAccount: async () => {
+    set({ deletingAccount: true });
+    try {
+      console.log("[AuthStore] Deleting account...");
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Not authenticated");
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/account`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Delete failed: ${response.status}`);
+      }
+
+      console.log("[AuthStore] Account deleted, clearing local state");
+
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        deletingAccount: false,
+      });
+
+      await supabase.auth.signOut();
+    } catch (error: any) {
+      console.error("[AuthStore] Delete account exception:", error);
+      set({ deletingAccount: false });
+      throw error;
     }
   },
 }));

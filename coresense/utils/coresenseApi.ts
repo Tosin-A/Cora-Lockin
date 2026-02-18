@@ -1308,6 +1308,53 @@ export async function sendTestNotification(): Promise<{
   return { success: data?.success || false, error };
 }
 
+// ============================================================================
+// SUBSCRIPTION API (Stripe)
+// ============================================================================
+
+export interface SubscriptionStatus {
+  is_pro: boolean;
+  status: string;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+}
+
+export async function createCheckoutSession(): Promise<{
+  data: { url: string; session_id: string } | null;
+  error: string | null;
+}> {
+  return apiRequest("/api/v1/subscription/create-checkout", { method: "POST" });
+}
+
+export async function getSubscriptionStatus(): Promise<{
+  data: SubscriptionStatus | null;
+  error: string | null;
+}> {
+  return apiRequest<SubscriptionStatus>("/api/v1/subscription/status");
+}
+
+export async function createPortalSession(): Promise<{
+  data: { url: string } | null;
+  error: string | null;
+}> {
+  return apiRequest("/api/v1/subscription/portal", { method: "POST" });
+}
+
+export async function cancelSubscription(): Promise<{
+  data: { status: string; cancel_at_period_end: boolean; current_period_end: string | null } | null;
+  error: string | null;
+}> {
+  return apiRequest("/api/v1/subscription/cancel", { method: "POST" });
+}
+
+// Account
+export async function deleteAccount(): Promise<{
+  data: { success: boolean } | null;
+  error: string | null;
+}> {
+  return apiRequest("/api/v1/account", { method: "DELETE" });
+}
+
 // Export all functions
 export const coresenseApi = {
   // Home
@@ -1378,6 +1425,15 @@ export const coresenseApi = {
   getNotificationPreferences,
   updateNotificationPreferences,
   sendTestNotification,
+
+  // Subscription
+  createCheckoutSession,
+  getSubscriptionStatus,
+  createPortalSession,
+  cancelSubscription,
+
+  // Account
+  deleteAccount,
 
   // Auth
   clearAuthTokenCache,

@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -35,7 +36,7 @@ export default function AccountScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { user, signOut } = useAuthStore();
+  const { user, signOut, deleteAccount, deletingAccount } = useAuthStore();
   const { profile: storeProfile, fetchProfile } = useUserStore();
 
   // Profile state
@@ -49,6 +50,10 @@ export default function AccountScreen() {
 
   // Track if there are unsaved changes
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Delete account confirmation state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   // Fetch profile data
   const fetchData = useCallback(async () => {
@@ -176,18 +181,31 @@ export default function AccountScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'This action cannot be undone. All your data will be permanently deleted.',
+      'This will permanently delete your account and all your data. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Continue',
           style: 'destructive',
           onPress: () => {
-            Alert.alert('Coming soon', 'Account deletion will be available soon');
+            setDeleteConfirmText('');
+            setShowDeleteModal(true);
           },
         },
-      ]
+      ],
     );
+  };
+
+  const performDeleteAccount = async () => {
+    setShowDeleteModal(false);
+    try {
+      await deleteAccount();
+    } catch (err: any) {
+      Alert.alert(
+        'Deletion Failed',
+        err?.message || 'Unable to delete your account. Please try again or contact support.',
+      );
+    }
   };
 
   // Loading state
@@ -317,14 +335,77 @@ export default function AccountScreen() {
           <TouchableOpacity
             style={[styles.actionItem, styles.actionItemDanger]}
             onPress={handleDeleteAccount}
+            disabled={deletingAccount}
           >
-            <Ionicons name="trash-outline" size={20} color={colors.error} />
+            {deletingAccount ? (
+              <ActivityIndicator size="small" color={colors.error} />
+            ) : (
+              <Ionicons name="trash-outline" size={20} color={colors.error} />
+            )}
             <Text style={[styles.actionText, { color: colors.error }]}>
-              Delete Account
+              {deletingAccount ? 'Deleting Account...' : 'Delete Account'}
             </Text>
           </TouchableOpacity>
         </Card>
       </ScrollView>
+
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              Confirm Deletion
+            </Text>
+            <Text style={[styles.modalBody, { color: colors.textSecondary }]}>
+              All your messages, health data, insights, and preferences will be permanently erased. This cannot be reversed.
+            </Text>
+            <Text style={[styles.modalPrompt, { color: colors.textSecondary }]}>
+              Type <Text style={{ fontWeight: '700', color: colors.error }}>DELETE</Text> to confirm:
+            </Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  color: colors.textPrimary,
+                  backgroundColor: colors.surfaceMedium,
+                  borderColor: deleteConfirmText === 'DELETE' ? colors.error : colors.border,
+                },
+              ]}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              placeholder="DELETE"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.surfaceMedium }]}
+                onPress={() => setShowDeleteModal(false)}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.textPrimary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.modalButtonDestructive,
+                  deleteConfirmText !== 'DELETE' && styles.modalButtonDisabled,
+                ]}
+                onPress={performDeleteAccount}
+                disabled={deleteConfirmText !== 'DELETE'}
+              >
+                <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>
+                  Delete My Account
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -529,5 +610,63 @@ const styles = StyleSheet.create({
   // Save button
   saveButton: {
     marginBottom: Spacing.lg,
+  },
+  // Delete confirmation modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  modalContent: {
+    width: '100%',
+    borderRadius: BorderRadius.large,
+    padding: Spacing.xl,
+  },
+  modalTitle: {
+    ...Typography.h3,
+    marginBottom: Spacing.md,
+  },
+  modalBody: {
+    ...Typography.body,
+    marginBottom: Spacing.lg,
+    lineHeight: 22,
+  },
+  modalPrompt: {
+    ...Typography.bodySmall,
+    marginBottom: Spacing.sm,
+  },
+  modalInput: {
+    ...Typography.body,
+    borderWidth: 1,
+    borderRadius: BorderRadius.medium,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.lg,
+    textAlign: 'center',
+    letterSpacing: 2,
+    fontWeight: '600',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonDestructive: {
+    backgroundColor: Colors.error,
+  },
+  modalButtonDisabled: {
+    opacity: 0.4,
+  },
+  modalButtonText: {
+    ...Typography.body,
+    fontWeight: '600',
   },
 });

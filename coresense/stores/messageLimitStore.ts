@@ -5,12 +5,8 @@
  */
 
 import { create } from 'zustand';
-import { Linking } from 'react-native';
 import { coresenseApi } from '../utils/coresenseApi';
 import { useAuthStore } from './authStore';
-
-// Placeholder - user will provide the real URL
-const UPGRADE_URL = 'https://coresense.app/upgrade';
 
 interface MessageLimitState {
   // State
@@ -36,11 +32,7 @@ interface MessageLimitState {
   canSendMessage: () => boolean;
   showUpgradePrompt: () => void;
   hidePaywall: () => void;
-  openUpgradePage: () => void;
-  setUpgradeUrl: (url: string) => void;
 }
-
-let _upgradeUrl = UPGRADE_URL;
 
 export const useMessageLimitStore = create<MessageLimitState>((set, get) => ({
   // Initial state
@@ -126,14 +118,6 @@ export const useMessageLimitStore = create<MessageLimitState>((set, get) => ({
 
   hidePaywall: () => {
     set({ showPaywall: false });
-  },
-
-  openUpgradePage: () => {
-    Linking.openURL(_upgradeUrl);
-  },
-
-  setUpgradeUrl: (url: string) => {
-    _upgradeUrl = url;
   },
 }));
 

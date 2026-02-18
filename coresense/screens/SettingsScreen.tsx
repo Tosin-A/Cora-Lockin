@@ -20,6 +20,7 @@ import {
   Platform,
   Animated,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -46,6 +47,7 @@ import {
 import {
   registerForPushNotifications,
 } from "../utils/notificationService";
+import { useSubscriptionStore } from "../stores/subscriptionStore";
 
 // ============================================================================
 // CONSTANTS (UNCHANGED)
@@ -207,6 +209,17 @@ export default function SettingsScreen() {
   const { colors } = useTheme();
   const { user } = useAuthStore();
   const { preferences, fetchPreferences, updatePreferences, profile } = useUserStore();
+  const {
+    isPro,
+    status: subStatus,
+    currentPeriodEnd,
+    cancelAtPeriodEnd,
+    loading: subLoading,
+    checkoutLoading,
+    loadSubscriptionStatus,
+    startCheckout,
+    openCustomerPortal,
+  } = useSubscriptionStore();
 
   // ============================================================================
   // STATE (Original names preserved)
@@ -285,8 +298,10 @@ export default function SettingsScreen() {
       if (user) {
         setIsLoading(true);
         setNotifPrefsLoading(true);
-        await fetchPreferences(user.id);
-        // Load notification preferences
+        await Promise.all([
+          fetchPreferences(user.id),
+          loadSubscriptionStatus(),
+        ]);
         const { data: notifData } = await coresenseApi.getNotificationPreferences();
         if (notifData) {
           setNotifPrefs(notifData);
@@ -604,6 +619,80 @@ export default function SettingsScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </View>
           </TouchableOpacity>
+
+          {/* ================================================================ */}
+          {/* SECTION: CoreSense Pro */}
+          {/* ================================================================ */}
+          <Card style={styles.section}>
+            <SectionHeader
+              icon={isPro ? "shield-checkmark" : "diamond-outline"}
+              title="CoreSense Pro"
+              iconColor={colors.primary}
+              colors={colors}
+            />
+
+            {isPro ? (
+              <>
+                <View style={styles.proBadgeRow}>
+                  <View style={[styles.proActiveBadge, { backgroundColor: `${colors.primary}18` }]}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+                    <Text style={[styles.proActiveBadgeText, { color: colors.primary }]}>Active</Text>
+                  </View>
+                  {cancelAtPeriodEnd && (
+                    <Text style={[styles.proCancelNote, { color: colors.textTertiary }]}>
+                      Cancels {currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : 'at period end'}
+                    </Text>
+                  )}
+                </View>
+
+                {currentPeriodEnd && !cancelAtPeriodEnd && (
+                  <Text style={[styles.proRenewalText, { color: colors.textTertiary }]}>
+                    Renews {new Date(currentPeriodEnd).toLocaleDateString()}
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.proManageButton, { backgroundColor: colors.surfaceMedium }]}
+                  onPress={openCustomerPortal}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="card-outline" size={18} color={colors.textPrimary} />
+                  <Text style={[styles.proManageButtonText, { color: colors.textPrimary }]}>
+                    Manage Subscription
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.proFeaturesList}>
+                  {[
+                    '20 messages per day',
+                    '100 messages per week',
+                    'Priority coaching responses',
+                  ].map((feature) => (
+                    <View key={feature} style={styles.proFeatureItem}>
+                      <Ionicons name="checkmark" size={16} color={colors.primary} />
+                      <Text style={[styles.proFeatureText, { color: colors.textSecondary }]}>{feature}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.proUpgradeButton, { backgroundColor: colors.primary }]}
+                  onPress={startCheckout}
+                  activeOpacity={0.8}
+                  disabled={checkoutLoading}
+                >
+                  {checkoutLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.proUpgradeButtonText}>Upgrade for £8.99/month</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </Card>
 
           {/* ================================================================ */}
           {/* SECTION 2: Appearance */}
@@ -1535,6 +1624,69 @@ const styles = StyleSheet.create({
   versionText: {
     ...Typography.caption,
     color: Colors.textMuted,
+  },
+
+  // Pro Section
+  proBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  proActiveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  proActiveBadgeText: {
+    ...Typography.caption,
+    fontWeight: "600",
+  },
+  proCancelNote: {
+    ...Typography.caption,
+  },
+  proRenewalText: {
+    ...Typography.caption,
+    marginBottom: Spacing.md,
+  },
+  proManageButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.medium,
+    marginTop: Spacing.sm,
+  },
+  proManageButtonText: {
+    ...Typography.body,
+    fontWeight: "500",
+    flex: 1,
+  },
+  proFeaturesList: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  proFeatureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  proFeatureText: {
+    ...Typography.bodySmall,
+  },
+  proUpgradeButton: {
+    paddingVertical: 14,
+    borderRadius: BorderRadius.medium,
+    alignItems: "center",
+  },
+  proUpgradeButtonText: {
+    ...Typography.button,
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
 
   // Modal Styles (Preserved)
