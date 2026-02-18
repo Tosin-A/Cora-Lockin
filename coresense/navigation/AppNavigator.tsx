@@ -226,14 +226,23 @@ export default function AppNavigator() {
       }
     });
 
-    // Initial auth check (only if INITIAL_SESSION hasn't been handled)
-    // Give the listener a moment to handle INITIAL_SESSION first
+    // Safety fallback: if INITIAL_SESSION hasn't fired after 3s, force out of loading
     const timeoutId = setTimeout(() => {
       if (!hasHandledInitialSession) {
         hasHandledInitialSession = true;
+        console.log('[AppNavigator] INITIAL_SESSION not received, running checkAuth fallback');
         checkAuth();
       }
-    }, 200);
+    }, 3000);
+
+    // Extra safety: guarantee we never stay stuck on splash forever
+    const hardTimeoutId = setTimeout(() => {
+      const { isLoading } = useAuthStore.getState();
+      if (isLoading) {
+        console.warn('[AppNavigator] Hard timeout: forcing out of loading state');
+        useAuthStore.setState({ isLoading: false });
+      }
+    }, 6000);
 
     // Handle OAuth redirects via deep links
     const handleDeepLink = async (event: { url: string }) => {
@@ -323,6 +332,7 @@ export default function AppNavigator() {
       subscription.unsubscribe();
       linkingSubscription.remove();
       clearTimeout(timeoutId);
+      clearTimeout(hardTimeoutId);
     };
   }, [checkAuth]);
 

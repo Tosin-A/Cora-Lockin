@@ -84,14 +84,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   checkAuth: async () => {
     try {
-      const currentState = get();
-
-      // Prevent duplicate calls if already checking
-      if (currentState.isLoading) {
-        console.log("checkAuth: Already loading, skipping...");
-        return;
-      }
-
       console.log("checkAuth: Checking session...");
       const {
         data: { session },
@@ -106,12 +98,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (session?.user) {
         // Only update if user changed or not authenticated
-        const currentUser = currentState.user;
+        const currentState = get();
         if (
-          currentUser?.id === session.user.id &&
+          currentState.user?.id === session.user.id &&
           currentState.isAuthenticated
         ) {
           console.log("checkAuth: User already authenticated, skipping update");
+          set({ isLoading: false });
           return;
         }
 
@@ -131,11 +124,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
       } else {
         console.log("checkAuth: No session found");
-        if (!currentState.isLoading) {
-          set({ user: null, isAuthenticated: false, isLoading: false });
-        } else {
-          set({ user: null, isAuthenticated: false });
-        }
+        set({ user: null, isAuthenticated: false, isLoading: false });
       }
     } catch (error) {
       console.error("checkAuth: Exception:", error);

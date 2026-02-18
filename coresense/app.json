@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "splash": {
-      "backgroundColor": "#000000"
+      "backgroundColor": "#0F0F14"
     },
     "assetBundlePatterns": [
       "**/*"

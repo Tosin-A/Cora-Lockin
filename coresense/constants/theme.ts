@@ -156,8 +156,8 @@ export const DarkColors = {
   shadowColorStrong: 'rgba(0, 0, 0, 0.7)',
 } as const;
 
-// Default to light mode - will be dynamically updated by useColors hook
-export let Colors = { ...LightColors };
+// Default to dark mode - will be dynamically updated by ThemeProvider
+export let Colors = { ...DarkColors };
 
 // Function to get colors based on theme mode
 export const getColors = (isDark: boolean) => {
@@ -280,8 +280,8 @@ export const getGlassmorphism = (isDark: boolean) => ({
   },
 });
 
-// Default Glassmorphism (light mode)
-export const Glassmorphism = getGlassmorphism(false);
+// Default Glassmorphism (dark mode)
+export const Glassmorphism = getGlassmorphism(true);
 
 // Shadows (same for both modes, but opacity adjusted)
 export const getShadows = (isDark: boolean) => ({
@@ -315,8 +315,8 @@ export const getShadows = (isDark: boolean) => ({
   },
 });
 
-// Default Shadows (light mode)
-export const Shadows = getShadows(false);
+// Default Shadows (dark mode)
+export const Shadows = getShadows(true);
 
 // Deprecated - keeping for backward compatibility
 export const GlowEffects = {
