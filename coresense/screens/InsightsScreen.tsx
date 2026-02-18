@@ -117,14 +117,11 @@ export default function InsightsScreen() {
     await dismissInsight(insightId);
   }, [dismissInsight]);
 
-  // Sticky Header Component
-  const StickyHeader = ({ subtitle }: { subtitle: string }) => (
-    <View style={[styles.stickyHeader, { paddingTop: insets.top + Spacing.sm, backgroundColor: colors.background }]}>
-      <View style={[StyleSheet.absoluteFill, styles.headerBg, { backgroundColor: colors.background }]} />
-      <View style={styles.headerContent}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Insights</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
-      </View>
+  // Header Component - rendered inline above ScrollView so RefreshControl is visible
+  const Header = ({ subtitle }: { subtitle: string }) => (
+    <View style={[styles.header, { paddingTop: insets.top + Spacing.sm, backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.textPrimary }]}>Insights</Text>
+      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
     </View>
   );
 
@@ -142,20 +139,18 @@ export default function InsightsScreen() {
   if (error && !healthInsights) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <StickyHeader subtitle="Pull to retry" />
+        <Header subtitle="Pull to retry" />
 
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[
-            styles.content,
-            { paddingTop: insets.top + 80 },
-          ]}
+          contentContainerStyle={styles.content}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
               tintColor={colors.primary}
-              progressViewOffset={insets.top + 80}
+              title="Pull down to refresh"
+              titleColor={colors.textTertiary}
             />
           }
         >
