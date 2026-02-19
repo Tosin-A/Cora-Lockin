@@ -234,9 +234,9 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         throw new Error(errorString);
       }
 
-      // Clear typing state - NO local coach message creation
-      // Coach message will come from /history after DB write completes
-      set({ typing: false });
+      // Release sending lock immediately so the user can type the next message
+      // while reconciliation happens in the background
+      set({ typing: false, sending: false });
 
       console.log(
         "Message sent, waiting for DB write and /history reconciliation..."
@@ -265,14 +265,12 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         useTodosStore.getState().fetchTodos();
       }
 
-      // Wait for DB write to complete before reconciliation
-      // Poll /history until we see the new message with a real DB ID
-      await get().waitForReconciliation([clientTempId]);
-
-      // Also wait for assistant messages to be reconciled (Phase 4)
-      if (assistantTempIds.length > 0) {
-        await get().waitForAssistantReconciliation(assistantTempIds);
-      }
+      // Reconcile in the background — don't block the user from typing
+      get().waitForReconciliation([clientTempId]).then(() => {
+        if (assistantTempIds.length > 0) {
+          return get().waitForAssistantReconciliation(assistantTempIds);
+        }
+      });
 
       // Refresh usage stats after successful message
       const { loadUsageStats } = useMessageLimitStore.getState();
@@ -313,7 +311,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         messages: [...state.messages, errorMessage],
       }));
     } finally {
-      set({ sending: false });
+      // Ensure sending is always released (covers error paths too)
+      if (get().sending) {
+        set({ sending: false });
+      }
     }
   },
 

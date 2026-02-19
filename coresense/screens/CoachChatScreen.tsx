@@ -337,6 +337,7 @@ export default function CoachChatScreen({ navigation }: any) {
               },
             ]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             ListEmptyComponent={renderEmptyChat}
             ListFooterComponent={renderTypingIndicator}
           />

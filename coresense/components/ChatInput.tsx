@@ -118,16 +118,20 @@ export default function ChatInput({
         <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <TextInput
             ref={inputRef}
-            style={[styles.textInput, { color: colors.textPrimary }]}
+            style={[
+              styles.textInput,
+              { color: colors.textPrimary },
+              disabled && { opacity: 0.5 },
+            ]}
             value={message}
             onChangeText={setMessage}
             placeholder={placeholder}
             placeholderTextColor={colors.textTertiary}
             multiline
             maxLength={500}
-            editable={!disabled}
             onSubmitEditing={handleSend}
             returnKeyType="send"
+            blurOnSubmit={false}
           />
 
           {/* Character Counter */}
