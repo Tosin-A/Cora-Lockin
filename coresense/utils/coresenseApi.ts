@@ -467,6 +467,8 @@ async function _apiRequestInner<T>(
 export async function getHomeData(): Promise<{
   data: HomeData | null;
   error: string | null;
+  errorCategory?: "network" | "timeout" | "auth" | "server" | "unknown";
+  isRetryable?: boolean;
 }> {
   return apiRequest<HomeData>("/api/v1/home/data");
 }

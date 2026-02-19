@@ -342,8 +342,8 @@ export default function CoachChatScreen({ navigation }: any) {
           />
         </View>
 
-        {/* Loading Overlay */}
-        {loading && (
+        {/* Loading Overlay — only on initial load when no messages exist */}
+        {loading && messages.length === 0 && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[styles.loadingText, { color: colors.textPrimary }]}>Loading chat...</Text>
@@ -367,7 +367,7 @@ export default function CoachChatScreen({ navigation }: any) {
             onSendMessage={handleSendMessage}
             quickActions={quickActions}
             onQuickActionPress={handleQuickAction}
-            disabled={sending || loading || messagesRemaining <= 0}
+            disabled={sending || messagesRemaining <= 0}
             placeholder={messagesRemaining <= 0 ? "Message limit reached" : "Chat to me"}
             initialMessage={initialMessage}
           />

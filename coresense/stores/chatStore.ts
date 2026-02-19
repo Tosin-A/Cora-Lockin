@@ -72,6 +72,7 @@ interface ChatStore {
   loadChatHistory: (options?: {
     useFullReplace?: boolean;
     forceRefresh?: boolean;
+    silent?: boolean;
   }) => Promise<void>;
   completeQuickAction: (actionId: string) => void;
   simulateStreaming: (messageId: string, fullText: string) => Promise<void>;
@@ -347,7 +348,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   loadChatHistory: async (options = {}) => {
-    const { useFullReplace = true, forceRefresh = false } = options;
+    const { useFullReplace = true, forceRefresh = false, silent = false } = options;
 
     // Prevent concurrent loads
     if (get().isLoadingHistory) {
@@ -357,7 +358,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     const thisLoadId = ++get().currentLoadId;
 
-    set({ loading: true, isLoadingHistory: true });
+    // Only show loading indicator on initial/explicit loads, not background reconciliation
+    set({ loading: !silent, isLoadingHistory: true });
 
     try {
       const { user } = useAuthStore.getState();
@@ -435,8 +437,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     );
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Load fresh history
-      await loadChatHistory({ useFullReplace: true, forceRefresh: true });
+      // Load fresh history silently (no loading overlay)
+      await loadChatHistory({ useFullReplace: true, forceRefresh: true, silent: true });
 
       const { messages, pendingMessageIds: currentPending } = get();
 
@@ -517,8 +519,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     );
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Load fresh history with full replace
-      await loadChatHistory({ useFullReplace: true, forceRefresh: true });
+      // Load fresh history silently (no loading overlay)
+      await loadChatHistory({ useFullReplace: true, forceRefresh: true, silent: true });
 
       const { messages: currentMessages } = get();
 

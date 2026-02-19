@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TouchableOpacity, View, StyleSheet } from 'react-native';
@@ -183,7 +183,7 @@ function extractTokensFromUrl(url: string): {
 
 export default function AppNavigator() {
   const { isAuthenticated, isLoading, checkAuth, pendingPasswordReset } = useAuthStore();
-  const navigationRef = useRef<any>(null);
+  const navigationRef = useRef<NavigationContainerRef<Record<string, undefined>>>(null);
   const prevIsAuthenticatedRef = useRef<boolean | null>(null);
 
   useEffect(() => {
@@ -418,11 +418,15 @@ export default function AppNavigator() {
 
     const linkingSubscription = Linking.addEventListener('url', handleDeepLink);
 
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink({ url });
-      }
-    });
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url) {
+          handleDeepLink({ url });
+        }
+      })
+      .catch((err) => {
+        console.warn('[AppNavigator] Failed to get initial URL:', err);
+      });
 
     return () => {
       subscription.unsubscribe();

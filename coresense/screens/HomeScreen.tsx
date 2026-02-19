@@ -311,13 +311,13 @@ export default function HomeScreen() {
         // Log detailed error info for debugging
         console.log('[HomeScreen] API error:', {
           error: result.error,
-          category: (result as any).errorCategory,
-          isRetryable: (result as any).isRetryable,
+          category: result.errorCategory,
+          isRetryable: result.isRetryable,
         });
 
         // Only show error to user for non-network errors
         // Network errors are common during development, don't alarm user
-        const errorCategory = (result as any).errorCategory;
+        const errorCategory = result.errorCategory;
         if (errorCategory === 'network' || errorCategory === 'timeout') {
           // Network unreachable - this is expected when backend isn't running
           console.log('[HomeScreen] Backend unavailable, app will work with cached/local data');
@@ -471,7 +471,7 @@ export default function HomeScreen() {
   const firstName = profile?.username || 'there';
 
   const handleGoToCoachChat = () => {
-    navigation.navigate('Coach' as never);
+    navigation.navigate('Coach' as any);
   };
 
   // Helper functions for date options
@@ -744,7 +744,7 @@ export default function HomeScreen() {
               actionable: todayInsight.actionable,
             }}
             onExpand={() => {
-              navigation.navigate('Insights' as never);
+              navigation.navigate('Insights' as any);
             }}
           />
         ) : (
@@ -762,7 +762,7 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>YOUR TASKS</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Tasks' as never)}>
+          <TouchableOpacity onPress={() => navigation.navigate('Tasks' as any)}>
             <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
           </TouchableOpacity>
         </View>
@@ -867,7 +867,7 @@ export default function HomeScreen() {
               {previousCompleted.length > 0 && (
                 <TouchableOpacity
                   style={styles.viewPreviousButton}
-                  onPress={() => navigation.navigate('Tasks' as never)}
+                  onPress={() => navigation.navigate('Tasks' as any)}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="time-outline" size={16} color={colors.textTertiary} />

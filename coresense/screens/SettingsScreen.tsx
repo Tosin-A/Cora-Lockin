@@ -173,7 +173,7 @@ const SectionHeader: React.FC<SectionHeaderProps & { colors: any }> = ({ icon, t
 // SKELETON LOADER COMPONENT
 // ============================================================================
 
-const SkeletonLoader: React.FC<{ width?: number | string; height?: number }> = ({
+const SkeletonLoader: React.FC<{ width?: import('react-native').DimensionValue; height?: number }> = ({
   width = "100%",
   height = 20
 }) => {
@@ -194,7 +194,7 @@ const SkeletonLoader: React.FC<{ width?: number | string; height?: number }> = (
     <Animated.View
       style={[
         styles.skeleton,
-        { width: width as any, height, opacity },
+        { width, height, opacity },
       ]}
     />
   );
@@ -929,24 +929,24 @@ export default function SettingsScreen() {
                         // Native module not available - still enable the setting
                         // so it will work when the app is properly rebuilt
                         setHealthKitEnabled(true);
-                        updateLocalPref("healthkit_enabled" as any, true);
+                        updateLocalPref("healthkit_enabled", true);
                         showToast("HealthKit enabled. Please rebuild the app to connect.", "info");
                       } else if (result.permissionsGranted) {
                         setHealthKitEnabled(true);
-                        updateLocalPref("healthkit_enabled" as any, true);
+                        updateLocalPref("healthkit_enabled", true);
                         showToast("HealthKit connected successfully!", "success");
                       } else {
                         // HealthKit available but permissions denied
                         // Still enable the setting - user may grant permissions later
                         setHealthKitEnabled(true);
-                        updateLocalPref("healthkit_enabled" as any, true);
+                        updateLocalPref("healthkit_enabled", true);
                         showToast("HealthKit enabled. Please grant permissions in Settings > Privacy > Health.", "info");
                       }
                     } catch (error) {
                       console.error("Error enabling HealthKit:", error);
                       // Still enable the setting on error
                       setHealthKitEnabled(true);
-                      updateLocalPref("healthkit_enabled" as any, true);
+                      updateLocalPref("healthkit_enabled", true);
                       showToast("HealthKit enabled but may need permissions.", "info");
                     } finally {
                       setRequestingHealthKit(false);
@@ -954,7 +954,7 @@ export default function SettingsScreen() {
                   } else {
                     // Turning OFF - disable syncing without revoking OS permissions
                     setHealthKitEnabled(false);
-                    updateLocalPref("healthkit_enabled" as any, false);
+                    updateLocalPref("healthkit_enabled", false);
                     showToast("HealthKit disabled. Your data won't be synced.", "info");
                   }
                 }}

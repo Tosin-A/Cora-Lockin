@@ -37,7 +37,7 @@ export default function SplashScreen() {
       const remaining = Math.max(0, 2000 - elapsed); // Minimum 2 seconds
 
       if (remaining > 0) {
-        setTimeout(() => {
+        authCheckRef.current = setTimeout(() => {
           if (mountedRef.current) {
             // Navigation would happen here
           }
