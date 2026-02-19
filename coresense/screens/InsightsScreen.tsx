@@ -64,28 +64,24 @@ export default function InsightsScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // Sync health data first, then fetch insights so charts reflect latest data
+  // Sync health data and fetch insights in parallel
   useFocusEffect(
     useCallback(() => {
-      const loadInsights = async () => {
-        console.log('[InsightsScreen] Focus effect - syncing then fetching insights');
-        if (permissionsGranted && user?.id) {
-          await syncToSupabase(user.id);
-        }
-        await fetchHealthInsights();
-      };
-      loadInsights();
+      if (permissionsGranted && user?.id) {
+        syncToSupabase(user.id);
+      }
+      fetchHealthInsights();
     }, [fetchHealthInsights, syncToSupabase, permissionsGranted, user?.id])
   );
 
-  // Pull to refresh - sync first, then fetch fresh insights
+  // Pull to refresh — parallel sync + fetch
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      if (permissionsGranted && user?.id) {
-        await syncToSupabase(user.id, true);
-      }
-      await fetchHealthInsights(true);
+      await Promise.all([
+        permissionsGranted && user?.id ? syncToSupabase(user.id, true) : Promise.resolve(),
+        fetchHealthInsights(true),
+      ]);
     } catch (err) {
       console.error('Refresh error:', err);
     } finally {

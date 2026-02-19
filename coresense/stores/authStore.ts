@@ -6,6 +6,7 @@
 import { create } from "zustand";
 import { supabase } from "../utils/supabase";
 import { startGoogleOAuth, handleOAuthError } from "../utils/oauth";
+import { clearAuthTokenCache } from "../utils/coresenseApi";
 import { API_BASE_URL } from "../utils/apiConfig";
 import type { User } from "../types";
 
@@ -66,12 +67,15 @@ interface AuthState {
   isAuthenticated: boolean;
   googleLoading: boolean;
   deletingAccount: boolean;
+  pendingPasswordReset: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   checkAuth: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  updatePassword: (newPassword: string) => Promise<void>;
+  setPendingPasswordReset: (pending: boolean) => void;
   deleteAccount: () => Promise<void>;
 }
 
@@ -81,6 +85,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   googleLoading: false,
   deletingAccount: false,
+  pendingPasswordReset: false,
 
   checkAuth: async () => {
     try {
@@ -318,19 +323,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       console.log("[AuthStore] Signing out...");
 
-      // Clear local state first
+      clearAuthTokenCache();
+
       set({
         user: null,
         isAuthenticated: false,
         isLoading: false,
+        pendingPasswordReset: false,
       });
 
-      // Then sign out from Supabase
       const { error } = await supabase.auth.signOut();
 
       if (error) {
         console.error("[AuthStore] Sign out error:", error);
-        // Still clear local state even if API call fails
       } else {
         console.log("[AuthStore] Sign out successful");
       }
@@ -340,6 +345,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user: null,
         isAuthenticated: false,
         isLoading: false,
+        pendingPasswordReset: false,
       });
     }
   },
@@ -348,7 +354,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       console.log("[AuthStore] Sending password reset email to:", email);
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: "coresense://auth/callback",
+        redirectTo: "coresense://auth/recovery",
       });
 
       if (error) {
@@ -361,6 +367,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.error("[AuthStore] Password reset exception:", error);
       throw error;
     }
+  },
+
+  updatePassword: async (newPassword: string) => {
+    try {
+      console.log("[AuthStore] Updating password...");
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        console.error("[AuthStore] Password update error:", error);
+        throw new Error(error.message);
+      }
+
+      console.log("[AuthStore] Password updated successfully");
+    } catch (error: any) {
+      console.error("[AuthStore] Password update exception:", error);
+      throw error;
+    }
+  },
+
+  setPendingPasswordReset: (pending: boolean) => {
+    set({ pendingPasswordReset: pending });
   },
 
   deleteAccount: async () => {
@@ -390,6 +419,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       console.log("[AuthStore] Account deleted, clearing local state");
+
+      clearAuthTokenCache();
 
       set({
         user: null,

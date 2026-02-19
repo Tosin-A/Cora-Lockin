@@ -16,6 +16,7 @@ import { Colors, Spacing } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import * as Linking from 'expo-linking';
 import { supabase } from '../utils/supabase';
+import { clearAuthTokenCache } from '../utils/coresenseApi';
 import { useSubscriptionStore } from '../stores/subscriptionStore';
 import { initializeHealthKit } from '../utils/healthService';
 import {
@@ -36,6 +37,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import AccountScreen from '../screens/AccountScreen';
 import CoachChatScreen from '../screens/CoachChatScreen';
 import TasksScreen from '../screens/TasksScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -141,8 +143,46 @@ const styles = StyleSheet.create({
   },
 });
 
+function extractCodeFromUrl(url: string): string | null {
+  if (url.includes('?')) {
+    const query = url.split('?')[1]?.split('#')[0];
+    if (query) {
+      return new URLSearchParams(query).get('code');
+    }
+  }
+  return null;
+}
+
+function extractTokensFromUrl(url: string): {
+  accessToken: string | null;
+  refreshToken: string | null;
+  error: string | null;
+} {
+  let accessToken: string | null = null;
+  let refreshToken: string | null = null;
+  let error: string | null = null;
+
+  const parse = (paramString: string) => {
+    const params = new URLSearchParams(paramString);
+    accessToken = accessToken || params.get('access_token');
+    refreshToken = refreshToken || params.get('refresh_token');
+    error = error || params.get('error');
+  };
+
+  if (url.includes('#')) {
+    const fragment = url.split('#')[1];
+    if (fragment) parse(fragment);
+  }
+  if (url.includes('?')) {
+    const query = url.split('?')[1]?.split('#')[0];
+    if (query) parse(query);
+  }
+
+  return { accessToken, refreshToken, error };
+}
+
 export default function AppNavigator() {
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { isAuthenticated, isLoading, checkAuth, pendingPasswordReset } = useAuthStore();
   const navigationRef = useRef<any>(null);
   const prevIsAuthenticatedRef = useRef<boolean | null>(null);
 
@@ -185,6 +225,7 @@ export default function AppNavigator() {
       }
       
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        clearAuthTokenCache();
         console.log('[AppNavigator] SIGNED_IN event - checking auth state');
         // Use the session from the event directly if available
         if (session?.user) {
@@ -211,14 +252,33 @@ export default function AppNavigator() {
           await checkAuth();
         }
       } else if (event === 'SIGNED_OUT') {
+        clearAuthTokenCache();
         console.log('Auth state changed: SIGNED_OUT - clearing auth state');
         useAuthStore.setState({
           user: null,
           isAuthenticated: false,
           isLoading: false,
         });
+      } else if (event === 'PASSWORD_RECOVERY') {
+        clearAuthTokenCache();
+        console.log('[AppNavigator] PASSWORD_RECOVERY event received');
+        if (session?.user) {
+          const mappedUser: User = {
+            id: session.user.id,
+            email: session.user.email || '',
+            username: session.user.email?.split('@')[0] || null,
+            full_name: session.user.user_metadata?.full_name || null,
+            avatar_url: session.user.user_metadata?.avatar_url || null,
+            created_at: session.user.created_at,
+          };
+          useAuthStore.setState({
+            user: mappedUser,
+            isAuthenticated: true,
+            isLoading: false,
+            pendingPasswordReset: true,
+          });
+        }
       } else if (event === 'USER_UPDATED') {
-        // Only check auth if we don't have a user or the user changed
         const currentState = useAuthStore.getState();
         if (!currentState.user || (session?.user && currentState.user.id !== session.user.id)) {
           await checkAuth();
@@ -260,59 +320,95 @@ export default function AppNavigator() {
         return;
       }
       
-      // Check if this is an OAuth callback
+      // Password recovery deep link (distinct from OAuth callback)
+      if (url.includes('coresense://auth/recovery')) {
+        console.log('[AppNavigator] Password recovery deep link detected');
+
+        // Set the flag synchronously BEFORE exchanging code so the
+        // SIGNED_IN event handler (which fires during exchange) doesn't
+        // navigate to the main app.
+        useAuthStore.setState({ pendingPasswordReset: true });
+
+        const code = extractCodeFromUrl(url);
+        if (code) {
+          try {
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) {
+              console.error('[AppNavigator] Recovery code exchange error:', error);
+              useAuthStore.setState({ pendingPasswordReset: false });
+            }
+          } catch (error) {
+            console.error('[AppNavigator] Recovery code exchange exception:', error);
+            useAuthStore.setState({ pendingPasswordReset: false });
+          }
+        } else {
+          // Implicit flow fallback: tokens may arrive via fragment
+          const tokens = extractTokensFromUrl(url);
+          if (tokens.accessToken && tokens.refreshToken) {
+            try {
+              const { error } = await supabase.auth.setSession({
+                access_token: tokens.accessToken,
+                refresh_token: tokens.refreshToken,
+              });
+              if (error) {
+                console.error('[AppNavigator] Recovery session error:', error);
+                useAuthStore.setState({ pendingPasswordReset: false });
+              }
+            } catch (error) {
+              console.error('[AppNavigator] Recovery session exception:', error);
+              useAuthStore.setState({ pendingPasswordReset: false });
+            }
+          }
+        }
+        return;
+      }
+
+      // OAuth / general auth callback
       if (url.includes('coresense://auth/callback')) {
         console.log('[AppNavigator] OAuth callback detected');
-        
-        let accessToken: string | null = null;
-        let refreshToken: string | null = null;
-        let errorParam: string | null = null;
-        
-        // Extract tokens from URL
-        if (url.includes('#')) {
-          const urlParts = url.split('#');
-          if (urlParts.length > 1) {
-            const params = new URLSearchParams(urlParts[1]);
-            accessToken = params.get('access_token');
-            refreshToken = params.get('refresh_token');
-            errorParam = params.get('error');
+
+        const code = extractCodeFromUrl(url);
+
+        if (code) {
+          console.log('[AppNavigator] PKCE code detected, exchanging for session...');
+          try {
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) {
+              console.error('[AppNavigator] Code exchange error:', error);
+            } else if (data.session) {
+              console.log('[AppNavigator] Code exchanged successfully');
+            }
+          } catch (error) {
+            console.error('[AppNavigator] Code exchange exception:', error);
           }
-        } else if (url.includes('?')) {
-          const urlParts = url.split('?');
-          if (urlParts.length > 1) {
-            const params = new URLSearchParams(urlParts[1]);
-            accessToken = params.get('access_token');
-            refreshToken = params.get('refresh_token');
-            errorParam = params.get('error');
-          }
-        }
-        
-        if (errorParam) {
-          console.error('[AppNavigator] OAuth error in callback:', errorParam);
           return;
         }
-        
-        if (accessToken && refreshToken) {
-          console.log('[AppNavigator] Setting session from deep link...');
+
+        const tokens = extractTokensFromUrl(url);
+        if (tokens.error) {
+          console.error('[AppNavigator] Auth error in callback:', tokens.error);
+          return;
+        }
+
+        if (tokens.accessToken && tokens.refreshToken) {
+          console.log('[AppNavigator] Setting session from tokens...');
           try {
             const { data, error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
+              access_token: tokens.accessToken,
+              refresh_token: tokens.refreshToken,
             });
-            
+
             if (error) {
               console.error('[AppNavigator] Error setting session:', error);
             } else if (data.session) {
               console.log('[AppNavigator] Session set successfully from deep link');
-              // The auth state change listener will handle updating the store
               await checkAuth();
             }
           } catch (error) {
-            console.error('[AppNavigator] Error handling OAuth redirect:', error);
+            console.error('[AppNavigator] Error handling auth redirect:', error);
           }
         } else {
-          console.log('[AppNavigator] No tokens in deep link, checking session...');
-          // Wait a bit and check if session was set
+          console.log('[AppNavigator] No tokens or code in deep link, checking session...');
           setTimeout(async () => {
             await checkAuth();
           }, 1000);
@@ -449,6 +545,12 @@ export default function AppNavigator() {
             <Stack.Screen name="Auth" component={AuthScreen} />
             <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           </>
+        ) : pendingPasswordReset ? (
+          <Stack.Screen
+            name="ResetPassword"
+            component={ResetPasswordScreen}
+            initialParams={{ mode: 'reset' }}
+          />
         ) : (
           <>
             <Stack.Screen name="Main" component={MainTabs} />
@@ -488,6 +590,20 @@ export default function AppNavigator() {
                   </TouchableOpacity>
                 ),
               })}
+            />
+            <Stack.Screen
+              name="ChangePassword"
+              component={ResetPasswordScreen}
+              initialParams={{ mode: 'change' }}
+              options={{
+                headerShown: true,
+                headerStyle: {
+                  backgroundColor: Colors.background,
+                },
+                headerTintColor: Colors.textPrimary,
+                headerTitle: 'Change Password',
+                headerBackTitle: 'Account',
+              }}
             />
           </>
         )}

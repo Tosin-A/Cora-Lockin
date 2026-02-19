@@ -420,11 +420,13 @@ async function _apiRequestInner<T>(
         },
       );
 
-      // Auto-retry GET requests on timeout (server may be cold-starting on Railway).
+      // Auto-retry on timeout (server may be cold-starting on Railway).
+      // Retries GET requests and idempotent POST endpoints (e.g. health/sync uses upsert).
       // Wait for the shared warmup check so all concurrent requests coordinate
       // behind a single health-check ping instead of retrying independently.
       const reqMethod = options.method || "GET";
-      if (category === 'timeout' && retryCount < 1 && reqMethod === 'GET') {
+      const isIdempotentPost = reqMethod === 'POST' && endpoint.includes('/health/sync');
+      if (category === 'timeout' && retryCount < 1 && (reqMethod === 'GET' || isIdempotentPost)) {
         const isWarm = await warmupServer();
         if (isWarm) {
           console.log(`[coresenseApi] 🔄 [${requestId}] Retrying after server warmup...`);
@@ -1050,7 +1052,7 @@ export interface HealthSyncPayload {
 export async function syncHealthData(
   payload: HealthSyncPayload,
 ): Promise<{ data: { success: boolean; inserted: number } | null; error: string | null }> {
-  return apiRequest("/api/v1/health/sync", { method: "POST", body: payload });
+  return apiRequest("/api/v1/health/sync", { method: "POST", body: payload, timeout: 30000 });
 }
 
 export interface HealthInsightsData {

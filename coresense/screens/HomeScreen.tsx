@@ -404,17 +404,13 @@ export default function HomeScreen() {
         });
       }
 
-      // Fetch general data and todos immediately
+      // Fire all data fetches in parallel — they are independent
       fetchData();
       fetchTodos();
-      // Sync health data first, then fetch insights so charts have latest data
-      const syncThenInsights = async () => {
-        if (user) {
-          await syncToSupabase(user.id);
-        }
-        await fetchHealthInsights();
-      };
-      syncThenInsights();
+      if (user) {
+        syncToSupabase(user.id);
+      }
+      fetchHealthInsights();
     }, [fetchData, fetchTodos, fetchHealthInsights, syncToSupabase, user, recordDailyStreak, pickGreeting])
   );
 
@@ -459,14 +455,16 @@ export default function HomeScreen() {
     setRefreshing(true);
     setGreeting(pickGreeting());
     try {
-      // Force sync first, then fetch insights with latest data
-      fetchData(false);
-      if (user) {
-        await syncToSupabase(user.id, true);
-      }
-      await fetchHealthInsights(true);
+      // Fire all refreshes in parallel
+      await Promise.all([
+        fetchData(false),
+        user ? syncToSupabase(user.id, true) : Promise.resolve(),
+        fetchHealthInsights(true),
+      ]);
     } catch (e) {
       console.log('[HomeScreen] Refresh failed:', e);
+    } finally {
+      setRefreshing(false);
     }
   }, [fetchData, fetchHealthInsights, syncToSupabase, user, pickGreeting]);
 

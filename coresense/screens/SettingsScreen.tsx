@@ -21,6 +21,7 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -603,17 +604,31 @@ export default function SettingsScreen() {
             accessibilityRole="button"
           >
             <View style={styles.accountLinkContent}>
-              <View style={[styles.accountAvatar, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.accountAvatarText, { color: '#FFFFFF' }]}>
-                  {profile?.username?.[0]?.toUpperCase() ||
-                    user?.email?.[0]?.toUpperCase() ||
-                    "U"}
-                </Text>
-              </View>
+              {profile?.avatar_url || user?.avatar_url ? (
+                <Image
+                  source={{ uri: profile?.avatar_url || user?.avatar_url || '' }}
+                  style={styles.accountAvatarImage}
+                />
+              ) : (
+                <View style={[styles.accountAvatar, { backgroundColor: colors.primary }]}>
+                  <Text style={[styles.accountAvatarText, { color: '#FFFFFF' }]}>
+                    {profile?.username?.[0]?.toUpperCase() ||
+                      user?.email?.[0]?.toUpperCase() ||
+                      "U"}
+                  </Text>
+                </View>
+              )}
               <View style={styles.accountInfo}>
-                <Text style={[styles.accountName, { color: colors.textPrimary }]}>
-                  {profile?.username || "Your Account"}
-                </Text>
+                <View style={styles.accountNameRow}>
+                  <Text style={[styles.accountName, { color: colors.textPrimary }]}>
+                    {profile?.username || "Your Account"}
+                  </Text>
+                  {isPro && (
+                    <View style={[styles.proPill, { backgroundColor: colors.primary }]}>
+                      <Text style={styles.proPillText}>PRO</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={[styles.accountEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
@@ -621,78 +636,44 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           {/* ================================================================ */}
-          {/* SECTION: CoreSense Pro */}
+          {/* SECTION: CoreSense Pro (upgrade CTA — hidden for Pro users) */}
           {/* ================================================================ */}
-          <Card style={styles.section}>
-            <SectionHeader
-              icon={isPro ? "shield-checkmark" : "diamond-outline"}
-              title="CoreSense Pro"
-              iconColor={colors.primary}
-              colors={colors}
-            />
+          {!isPro && (
+            <Card style={styles.section}>
+              <SectionHeader
+                icon="diamond-outline"
+                title="CoreSense Pro"
+                iconColor={colors.primary}
+                colors={colors}
+              />
 
-            {isPro ? (
-              <>
-                <View style={styles.proBadgeRow}>
-                  <View style={[styles.proActiveBadge, { backgroundColor: `${colors.primary}18` }]}>
-                    <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-                    <Text style={[styles.proActiveBadgeText, { color: colors.primary }]}>Active</Text>
+              <View style={styles.proFeaturesList}>
+                {[
+                  '20 messages per day',
+                  '100 messages per week',
+                  'Priority coaching responses',
+                ].map((feature) => (
+                  <View key={feature} style={styles.proFeatureItem}>
+                    <Ionicons name="checkmark" size={16} color={colors.primary} />
+                    <Text style={[styles.proFeatureText, { color: colors.textSecondary }]}>{feature}</Text>
                   </View>
-                  {cancelAtPeriodEnd && (
-                    <Text style={[styles.proCancelNote, { color: colors.textTertiary }]}>
-                      Cancels {currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : 'at period end'}
-                    </Text>
-                  )}
-                </View>
+                ))}
+              </View>
 
-                {currentPeriodEnd && !cancelAtPeriodEnd && (
-                  <Text style={[styles.proRenewalText, { color: colors.textTertiary }]}>
-                    Renews {new Date(currentPeriodEnd).toLocaleDateString()}
-                  </Text>
+              <TouchableOpacity
+                style={[styles.proUpgradeButton, { backgroundColor: colors.primary }]}
+                onPress={startCheckout}
+                activeOpacity={0.8}
+                disabled={checkoutLoading}
+              >
+                {checkoutLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.proUpgradeButtonText}>Upgrade for £8.99/month</Text>
                 )}
-
-                <TouchableOpacity
-                  style={[styles.proManageButton, { backgroundColor: colors.surfaceMedium }]}
-                  onPress={openCustomerPortal}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="card-outline" size={18} color={colors.textPrimary} />
-                  <Text style={[styles.proManageButtonText, { color: colors.textPrimary }]}>
-                    Manage Subscription
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View style={styles.proFeaturesList}>
-                  {[
-                    '20 messages per day',
-                    '100 messages per week',
-                    'Priority coaching responses',
-                  ].map((feature) => (
-                    <View key={feature} style={styles.proFeatureItem}>
-                      <Ionicons name="checkmark" size={16} color={colors.primary} />
-                      <Text style={[styles.proFeatureText, { color: colors.textSecondary }]}>{feature}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.proUpgradeButton, { backgroundColor: colors.primary }]}
-                  onPress={startCheckout}
-                  activeOpacity={0.8}
-                  disabled={checkoutLoading}
-                >
-                  {checkoutLoading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.proUpgradeButtonText}>Upgrade for £8.99/month</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
-          </Card>
+              </TouchableOpacity>
+            </Card>
+          )}
 
           {/* ================================================================ */}
           {/* SECTION 2: Appearance */}
@@ -1346,6 +1327,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: Spacing.md,
   },
+  accountAvatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: Spacing.md,
+  },
   accountAvatarText: {
     ...Typography.h2,
     color: Colors.textPrimary,
@@ -1353,11 +1340,28 @@ const styles = StyleSheet.create({
   accountInfo: {
     flex: 1,
   },
+  accountNameRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginBottom: 4,
+  },
   accountName: {
     ...Typography.body,
     color: Colors.textPrimary,
     fontWeight: "600",
-    marginBottom: 4,
+  },
+  proPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+  },
+  proPillText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700' as const,
+    letterSpacing: 0.5,
   },
   accountEmail: {
     ...Typography.bodySmall,
