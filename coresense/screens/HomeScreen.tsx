@@ -134,7 +134,7 @@ const TaskCard = ({ todo, onComplete, isCompleting = false, colors }: TaskCardPr
             </View>
           )}
         </View>
-        {todo.due_date && (
+        {todo.due_date && todo.created_by !== 'coach' && (
           <Text style={[taskCardStyles.taskDueDate, { color: colors.textTertiary }]}>
             Due: {new Date(todo.due_date).toLocaleDateString()}
           </Text>

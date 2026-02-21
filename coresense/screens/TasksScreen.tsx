@@ -329,9 +329,9 @@ export default function TasksScreen() {
               </View>
             )}
           </View>
-          {(todo.due_date || todo.due_time) && (
+          {((todo.due_date && todo.created_by !== 'coach') || todo.due_time) && (
             <View style={styles.taskMetaRow}>
-              {todo.due_date && (
+              {todo.due_date && todo.created_by !== 'coach' && (
                 <View style={styles.taskMetaItem}>
                   <Ionicons name="calendar-outline" size={12} color={colors.textTertiary} />
                   <Text style={[styles.taskMetaText, { color: colors.textTertiary }]}>
@@ -735,9 +735,9 @@ export default function TasksScreen() {
 
               <Text style={[styles.detailTitle, { color: colors.textPrimary }]}>{selectedTaskDetail.title}</Text>
 
-              {(selectedTaskDetail.due_date || selectedTaskDetail.due_time) && (
+              {((selectedTaskDetail.due_date && selectedTaskDetail.created_by !== 'coach') || selectedTaskDetail.due_time) && (
                 <View style={styles.detailMetaSection}>
-                  {selectedTaskDetail.due_date && (
+                  {selectedTaskDetail.due_date && selectedTaskDetail.created_by !== 'coach' && (
                     <View style={[styles.detailMetaItem, { backgroundColor: colors.surfaceMedium }]}>
                       <Ionicons name="calendar-outline" size={16} color={colors.primary} />
                       <Text style={[styles.detailMetaText, { color: colors.textPrimary }]}>
