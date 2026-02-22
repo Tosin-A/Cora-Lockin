@@ -40,6 +40,7 @@ export default function ChatMessageComponent({
       style={[
         styles.container,
         isUser ? styles.userContainer : styles.coachContainer,
+        isGrouped && styles.containerGrouped,
       ]}
     >
       {showAvatar && isLast && !isUser && (
@@ -54,13 +55,7 @@ export default function ChatMessageComponent({
         style={[
           styles.messageBubble,
           isUser ? [styles.userBubble, { backgroundColor: colors.primary }] : [styles.coachBubble, { backgroundColor: colors.surfaceLight }],
-          isGrouped && !isLast && styles.groupedMessage,
-          {
-            borderRadius:
-              message.text.length < 30
-                ? BorderRadius.large * 2
-                : BorderRadius.large * 1.5,
-          },
+          isGrouped && styles.groupedBubble,
         ]}
       >
         <Text
@@ -92,6 +87,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginBottom: Spacing.sm,
     maxWidth: "85%",
+  },
+  containerGrouped: {
+    marginBottom: 3,
   },
   userContainer: {
     alignSelf: "flex-end",
@@ -128,16 +126,14 @@ const styles = StyleSheet.create({
   },
   coachBubble: {
     backgroundColor: Colors.surfaceLight,
-    borderRadius: BorderRadius.large * 2,
+    borderRadius: 18,
   },
   userBubble: {
     backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.large * 2,
+    borderRadius: 18,
   },
-  groupedMessage: {
-    marginTop: Spacing.xs,
-    borderTopLeftRadius: BorderRadius.medium,
-    borderTopRightRadius: BorderRadius.medium,
+  groupedBubble: {
+    borderRadius: 14,
   },
   typingIndicator: {
     color: Colors.textSecondary,

@@ -166,12 +166,30 @@ export default function CoachChatScreen({ navigation }: any) {
     };
   }, []);
 
+  const displayMessages = useMemo(() => {
+    const result: typeof messages = [];
+    for (const msg of messages) {
+      if (msg.sender === 'coach' && msg.text) {
+        const paragraphs = msg.text.split(/\n\n+/).filter((p: string) => p.trim());
+        if (paragraphs.length > 1) {
+          paragraphs.forEach((paragraph: string, idx: number) => {
+            result.push({ ...msg, id: `${msg.id}-p${idx}`, text: paragraph.trim() });
+          });
+        } else {
+          result.push(msg);
+        }
+      } else {
+        result.push(msg);
+      }
+    }
+    return result;
+  }, [messages]);
+
   useEffect(() => {
-    // Scroll to bottom when new messages arrive (iMessage-style immediate scroll)
-    if (messages.length > 0 && flatListRef.current) {
+    if (displayMessages.length > 0 && flatListRef.current) {
       flatListRef.current?.scrollToEnd({ animated: true });
     }
-  }, [messages]);
+  }, [displayMessages]);
 
   const handleSendMessage = useCallback(async (messageText: string) => {
     try {
@@ -196,11 +214,11 @@ export default function CoachChatScreen({ navigation }: any) {
   }, [completeQuickAction, quickActions, generateInsightFromChat]);
 
   const renderMessage = ({ item, index }: { item: any; index: number }) => {
-    const prevMessage = messages[index - 1];
+    const prevMessage = displayMessages[index - 1];
     const isGrouped =
       prevMessage &&
       prevMessage.sender === item.sender &&
-      new Date().getTime() - new Date(prevMessage.timestamp).getTime() < 300000; // 5 minutes
+      new Date().getTime() - new Date(prevMessage.timestamp).getTime() < 300000;
 
     return (
       <ChatMessage
@@ -259,13 +277,9 @@ export default function CoachChatScreen({ navigation }: any) {
                   },
                 },
                 {
-                  text: "Coach Status",
+                  text: "Reload Chat",
                   onPress: () => {
-                    // Show coach status info
-                    Alert.alert(
-                      "Coach Status",
-                      "Your coach remembers everything and holds you accountable."
-                    );
+                    loadChatHistory({ forceRefresh: true });
                   },
                 },
                 { text: "Cancel", style: "cancel" },
@@ -335,7 +349,7 @@ export default function CoachChatScreen({ navigation }: any) {
         <View style={styles.messagesContainer}>
           <FlatList
             ref={flatListRef}
-            data={messages}
+            data={displayMessages}
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
             style={styles.messagesList}
