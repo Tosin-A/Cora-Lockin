@@ -61,6 +61,7 @@ export default function CoachChatScreen({ navigation }: any) {
     quickActions,
     sendMessage,
     loadChatHistory,
+    loadCachedMessages,
     completeQuickAction,
     pendingReconciliation,
     hasPendingReconciliation,
@@ -82,9 +83,21 @@ export default function CoachChatScreen({ navigation }: any) {
   const { startCheckout, checkoutLoading } = useSubscriptionStore();
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const skeletonPulse = useRef(new Animated.Value(0.3)).current;
 
-  // Load usage stats on mount
   useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonPulse, { toValue: 0.6, duration: 900, useNativeDriver: true }),
+        Animated.timing(skeletonPulse, { toValue: 0.3, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, []);
+
+  useEffect(() => {
+    loadCachedMessages();
     loadUsageStats();
   }, []);
 
@@ -115,21 +128,18 @@ export default function CoachChatScreen({ navigation }: any) {
   }, [route.params?.context]);
 
   useEffect(() => {
-    // Load chat history when screen focuses (handles fast navigation)
-    // Phase 4: Skip reload during streaming or pending reconciliation
     const unsubscribe = navigation.addListener("focus", () => {
-      const isTyping = typing;
-      const hasPending = hasPendingReconciliation();
+      if (typing || hasPendingReconciliation()) return;
 
-      if (isTyping || hasPending) {
-        console.log(
-          `Skipping focus reload: typing=${isTyping}, pending=${hasPending}`
-        );
+      const state = useChatStore.getState();
+      if (state.lastSyncedAt && Date.now() - state.lastSyncedAt.getTime() < 30000) {
         return;
       }
 
-      console.log("Focus event: loading chat history");
-      loadChatHistory({ forceRefresh: true });
+      loadChatHistory({
+        forceRefresh: true,
+        silent: state.messages.length > 0,
+      });
     });
 
     return unsubscribe;
@@ -343,11 +353,28 @@ export default function CoachChatScreen({ navigation }: any) {
           />
         </View>
 
-        {/* Loading Overlay — only on initial load when no messages exist */}
         {loading && messages.length === 0 && (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.textPrimary }]}>Loading chat...</Text>
+          <View style={styles.skeletonContainer}>
+            {[
+              { w: '65%', h: 56, left: true },
+              { w: '45%', h: 40, left: false },
+              { w: '75%', h: 64, left: true },
+              { w: '40%', h: 36, left: false },
+              { w: '55%', h: 48, left: true },
+            ].map((item, i) => (
+              <Animated.View
+                key={i}
+                style={{
+                  width: item.w as any,
+                  height: item.h,
+                  backgroundColor: colors.surfaceMedium || '#F3F4F6',
+                  borderRadius: 12,
+                  alignSelf: item.left ? ('flex-start' as const) : ('flex-end' as const),
+                  marginBottom: 12,
+                  opacity: skeletonPulse,
+                }}
+              />
+            ))}
           </View>
         )}
 
@@ -517,21 +544,15 @@ const styles = StyleSheet.create({
   inputContainer: {
     // Input container will be positioned at the bottom
   },
-  loadingOverlay: {
-    position: "absolute",
+  skeletonContainer: {
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-  },
-  loadingText: {
-    ...Typography.body,
-    color: Colors.textPrimary,
-    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 80,
+    justifyContent: 'flex-end',
   },
   emptyChatContainer: {
     flex: 1,

@@ -16,8 +16,9 @@ import { Colors, Spacing } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import * as Linking from 'expo-linking';
 import { supabase } from '../utils/supabase';
-import { clearAuthTokenCache } from '../utils/coresenseApi';
+import { clearAuthTokenCache, warmupServer } from '../utils/coresenseApi';
 import { useSubscriptionStore } from '../stores/subscriptionStore';
+import { useChatStore } from '../stores/chatStore';
 import { initializeHealthKit } from '../utils/healthService';
 import {
   setNotificationNavigationRef,
@@ -442,6 +443,9 @@ export default function AppNavigator() {
 
     if (isAuthenticated) {
       console.log('[AppNavigator] User already authenticated, initializing services...');
+
+      warmupServer();
+      useChatStore.getState().loadChatHistory({ silent: true });
 
       // Initialize HealthKit
       initializeHealthKit()

@@ -10,6 +10,7 @@
 
 import { create } from "zustand";
 import { Alert } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { coresenseApi } from "../utils/coresenseApi";
 import { useAuthStore } from "./authStore";
 import { useMessageLimitStore } from "./messageLimitStore";
@@ -94,6 +95,9 @@ interface ChatStore {
   // Message limit integration
   checkMessageLimit: () => boolean;
   showUpgradePrompt: () => void;
+
+  // Cache
+  loadCachedMessages: () => Promise<void>;
 }
 
 // Generate unique temp ID for optimistic messages
@@ -337,7 +341,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   clearChat: () => {
-    set({ messages: [] });
+    set({ messages: [], lastSyncedAt: null });
+    AsyncStorage.removeItem("coresense_chat_cache").catch(() => {});
   },
 
   markAsRead: (messageId: string) => {
@@ -399,9 +404,11 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         }
 
         if (useFullReplace) {
-          // Full replace - /history is authoritative
-          // This eliminates duplicates by ensuring we only have DB-persisted messages
           set({ messages: formattedMessages, lastSyncedAt: new Date() });
+          AsyncStorage.setItem(
+            "coresense_chat_cache",
+            JSON.stringify(formattedMessages)
+          ).catch(() => {});
         } else {
           // Delta mode - append only new messages
           get().appendNewMessages(formattedMessages);
@@ -629,7 +636,25 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     });
   },
 
-  // Message limit integration
+  loadCachedMessages: async () => {
+    if (get().messages.length > 0) return;
+    try {
+      const cached = await AsyncStorage.getItem("coresense_chat_cache");
+      if (cached && get().messages.length === 0) {
+        const parsed = JSON.parse(cached) as ChatMessage[];
+        const restored = parsed.map((m) => ({
+          ...m,
+          timestamp: new Date(m.timestamp),
+        }));
+        if (restored.length > 0) {
+          set({ messages: restored, loading: false });
+        }
+      }
+    } catch {
+      // Cache miss is non-fatal
+    }
+  },
+
   checkMessageLimit: () => {
     const { canSendMessage } = useMessageLimitStore.getState();
     return canSendMessage();

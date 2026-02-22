@@ -51,7 +51,7 @@ console.log(`[coresenseApi] 🌐 Using API URL: ${API_URL} (Platform: ${Platform
 let _serverConfirmedAlive = false;
 let _warmupPromise: Promise<boolean> | null = null;
 
-async function warmupServer(): Promise<boolean> {
+export async function warmupServer(): Promise<boolean> {
   if (_serverConfirmedAlive) return true;
   if (_warmupPromise) return _warmupPromise;
 
@@ -342,6 +342,15 @@ async function _apiRequestInner<T>(
   const requestId = Math.random().toString(36).substring(7);
   const startTime = Date.now();
 
+  if (!_serverConfirmedAlive) {
+    if (!_warmupPromise) {
+      warmupServer();
+    }
+    if (_warmupPromise) {
+      await _warmupPromise;
+    }
+  }
+
   try {
     const token = await getAuthToken();
 
@@ -352,7 +361,7 @@ async function _apiRequestInner<T>(
 
     console.log(`[coresenseApi] 🔑 [${requestId}] Token present`);
 
-    const timeoutMs = options.timeout || 10000; // Default 10 second timeout
+    const timeoutMs = options.timeout || 10000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -1441,6 +1450,9 @@ export const coresenseApi = {
 
   // Auth
   clearAuthTokenCache,
+
+  // Server
+  warmupServer,
 };
 
 export default coresenseApi;
