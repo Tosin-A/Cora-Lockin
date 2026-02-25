@@ -20,15 +20,17 @@ import { Spacing, Typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import { PurpleButton } from '../components/PurpleButton';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
+import { AppleSignInButton } from '../components/AppleSignInButton';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { useAuthStore } from '../stores/authStore';
 import { handleOAuthError } from '../utils/oauth';
+import { handleAppleAuthError } from '../utils/appleAuth';
 
 export default function AuthScreen() {
   const navigation = useNavigation();
   const { colors } = useTheme();
-  const { signIn, signUp, signInWithGoogle, resetPassword, isLoading, googleLoading } = useAuthStore();
+  const { signIn, signUp, signInWithGoogle, signInWithApple, resetPassword, isLoading, googleLoading, appleLoading } = useAuthStore();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,6 +39,7 @@ export default function AuthScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [generalError, setGeneralError] = useState('');
   const [googleError, setGoogleError] = useState('');
+  const [appleError, setAppleError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
 
   const validateEmail = (email: string) => {
@@ -138,6 +141,33 @@ export default function AuthScreen() {
 
       Alert.alert(
         'Google Sign-In Failed',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setAppleError('');
+    setGeneralError('');
+
+    try {
+      console.log('AuthScreen: Starting Apple sign-in...');
+      await signInWithApple();
+      console.log('AuthScreen: Apple sign-in successful');
+    } catch (err: any) {
+      console.error('AuthScreen: Apple sign-in error:', err);
+
+      // Don't show error for user cancellation
+      if (err?.code === 'ERR_REQUEST_CANCELED' || err?.code === '1001') {
+        return;
+      }
+
+      const errorMessage = handleAppleAuthError(err);
+      setAppleError(errorMessage);
+
+      Alert.alert(
+        'Apple Sign-In Failed',
         errorMessage,
         [{ text: 'OK' }]
       );
@@ -282,6 +312,16 @@ export default function AuthScreen() {
             <Text style={[styles.googleError, dynamicStyles.error]}>{googleError}</Text>
           )}
 
+          <AppleSignInButton
+            onPress={handleAppleSignIn}
+            loading={appleLoading}
+            style={styles.appleButton}
+          />
+
+          {appleError && (
+            <Text style={[styles.appleError, dynamicStyles.error]}>{appleError}</Text>
+          )}
+
           {generalError && (
             <Text style={[styles.generalError, dynamicStyles.error]}>{generalError}</Text>
           )}
@@ -304,6 +344,8 @@ export default function AuthScreen() {
                 setEmailError('');
                 setPasswordError('');
                 setGeneralError('');
+                setGoogleError('');
+                setAppleError('');
               }}
               variant="text"
             />
@@ -361,6 +403,14 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
   googleError: {
+    ...Typography.caption,
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+  },
+  appleButton: {
+    marginTop: Spacing.sm,
+  },
+  appleError: {
     ...Typography.caption,
     marginTop: Spacing.xs,
     textAlign: 'center',

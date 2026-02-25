@@ -29,10 +29,14 @@ import { Card } from '../components/Card';
 import { PurpleButton } from '../components/PurpleButton';
 import { useAuthStore } from '../stores/authStore';
 import { useUserStore } from '../stores/userStore';
-import { useSubscriptionStore } from '../stores/subscriptionStore';
 import { getUserProfile, updateUserProfile } from '../utils/api';
 import { User } from '../types';
 
+const isApplePrivateRelay = (email?: string) =>
+  !!email && email.includes('@privaterelay.appleid.com');
+
+const getDisplayEmail = (email?: string) =>
+  isApplePrivateRelay(email) ? 'Private Apple Email' : email;
 
 export default function AccountScreen() {
   const navigation = useNavigation();
@@ -40,14 +44,6 @@ export default function AccountScreen() {
   const { colors } = useTheme();
   const { user, signOut, deleteAccount, deletingAccount } = useAuthStore();
   const { profile: storeProfile, fetchProfile } = useUserStore();
-  const {
-    isPro,
-    cancelAtPeriodEnd,
-    currentPeriodEnd,
-    cancelSubscription,
-    openCustomerPortal,
-    loadSubscriptionStatus,
-  } = useSubscriptionStore();
 
   // Profile state
   const [profile, setProfile] = useState<User | null>(null);
@@ -98,8 +94,7 @@ export default function AccountScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-      loadSubscriptionStatus();
-    }, [fetchData, loadSubscriptionStatus])
+    }, [fetchData])
   );
 
   // Check for changes
@@ -219,21 +214,6 @@ export default function AccountScreen() {
     }
   };
 
-  const handleCancelSubscription = () => {
-    Alert.alert(
-      'Cancel Subscription',
-      'Your Pro features will remain active until the end of your current billing period.',
-      [
-        { text: 'Keep Pro', style: 'cancel' },
-        {
-          text: 'Cancel Subscription',
-          style: 'destructive',
-          onPress: cancelSubscription,
-        },
-      ],
-    );
-  };
-
   // Loading state
   if (loading) {
     return (
@@ -296,7 +276,7 @@ export default function AccountScreen() {
               </Text>
             </View>
           )}
-          <Text style={[styles.avatarEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
+          <Text style={[styles.avatarEmail, { color: colors.textSecondary }]}>{getDisplayEmail(user?.email)}</Text>
         </View>
 
         {/* Profile Edit Section */}
@@ -346,7 +326,7 @@ export default function AccountScreen() {
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Account Details</Text>
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
             <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Email</Text>
-            <Text style={[styles.infoValue, { color: colors.textPrimary }]}>{user?.email}</Text>
+            <Text style={[styles.infoValue, { color: colors.textPrimary }]}>{getDisplayEmail(user?.email)}</Text>
           </View>
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
             <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Member since</Text>
@@ -368,36 +348,10 @@ export default function AccountScreen() {
             <Ionicons name="lock-closed-outline" size={20} color={colors.textPrimary} />
             <Text style={[styles.actionText, { color: colors.textPrimary }]}>Change Password</Text>
           </TouchableOpacity>
-          {isPro && (
-            <TouchableOpacity
-              style={[styles.actionItem, { borderBottomColor: colors.border }]}
-              onPress={openCustomerPortal}
-            >
-              <Ionicons name="card-outline" size={20} color={colors.textPrimary} />
-              <Text style={[styles.actionText, { color: colors.textPrimary }]}>Manage Subscription</Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity style={[styles.actionItem, { borderBottomColor: colors.border }]} onPress={handleSignOut}>
             <Ionicons name="log-out-outline" size={20} color={colors.textPrimary} />
             <Text style={[styles.actionText, { color: colors.textPrimary }]}>Sign Out</Text>
           </TouchableOpacity>
-          {isPro && !cancelAtPeriodEnd && (
-            <TouchableOpacity
-              style={[styles.actionItem, { borderBottomColor: colors.border }]}
-              onPress={handleCancelSubscription}
-            >
-              <Ionicons name="close-circle-outline" size={20} color={colors.warning} />
-              <Text style={[styles.actionText, { color: colors.warning }]}>Cancel Subscription</Text>
-            </TouchableOpacity>
-          )}
-          {isPro && cancelAtPeriodEnd && (
-            <View style={[styles.actionItem, { borderBottomColor: colors.border }]}>
-              <Ionicons name="information-circle-outline" size={20} color={colors.textTertiary} />
-              <Text style={[styles.actionText, { color: colors.textTertiary }]}>
-                Pro cancels {currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : 'at period end'}
-              </Text>
-            </View>
-          )}
           <TouchableOpacity
             style={[styles.actionItem, styles.actionItemDanger]}
             onPress={handleDeleteAccount}

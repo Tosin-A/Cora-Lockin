@@ -94,7 +94,6 @@ interface ChatStore {
 
   // Message limit integration
   checkMessageLimit: () => boolean;
-  showUpgradePrompt: () => void;
 
   // Cache
   loadCachedMessages: () => Promise<void>;
@@ -160,12 +159,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     if (!text.trim()) return;
 
     // Check message limit first
-    const { canSendMessage, showUpgradePrompt } =
-      useMessageLimitStore.getState();
+    const { canSendMessage } = useMessageLimitStore.getState();
 
     if (!canSendMessage()) {
-      console.log("Message limit reached, showing upgrade prompt");
-      showUpgradePrompt();
+      console.log("Message limit reached");
       return;
     }
 
@@ -222,7 +219,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
           errorString.includes("message_limit_reached") ||
           errorString.includes("402")
         ) {
-          console.log("Server-side limit check failed, showing upgrade prompt");
+          console.log("Server-side limit check: message limit reached");
           set((state) => ({
             typing: false,
             pendingReconciliation: state.pendingReconciliation.filter(
@@ -232,7 +229,6 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
               (id) => id !== clientTempId
             ),
           }));
-          showUpgradePrompt();
           return;
         }
         throw new Error(errorString);
@@ -658,10 +654,5 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   checkMessageLimit: () => {
     const { canSendMessage } = useMessageLimitStore.getState();
     return canSendMessage();
-  },
-
-  showUpgradePrompt: () => {
-    const { showUpgradePrompt } = useMessageLimitStore.getState();
-    showUpgradePrompt();
   },
 }));

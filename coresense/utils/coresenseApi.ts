@@ -361,7 +361,7 @@ async function _apiRequestInner<T>(
 
     console.log(`[coresenseApi] 🔑 [${requestId}] Token present`);
 
-    const timeoutMs = options.timeout || 10000;
+    const timeoutMs = options.timeout || 20000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 

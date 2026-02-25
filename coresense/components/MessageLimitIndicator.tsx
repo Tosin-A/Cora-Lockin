@@ -1,53 +1,29 @@
 /**
  * Message Limit Indicator Component
- * Shows user's message usage with visual progress bar and upgrade prompts
+ * Shows user's message usage with visual progress bar
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
 import { useMessageLimit } from '../stores/messageLimitStore';
 
 interface MessageLimitIndicatorProps {
-  showUpgradeButton?: boolean;
-  onUpgradePress?: () => void;
   compact?: boolean;
 }
 
 export const MessageLimitIndicator: React.FC<MessageLimitIndicatorProps> = ({
-  showUpgradeButton = true,
-  onUpgradePress,
   compact = false,
 }) => {
   const {
     messagesUsed,
     messagesLimit,
-    isPro,
     messagesRemaining,
     usagePercentage,
     isNearLimit,
     isAtLimit,
     progressColor,
-    showUpgradePrompt,
-    loading,
   } = useMessageLimit();
-
-  // Don't show anything for Pro users in compact mode
-  if (isPro && compact) {
-    return null;
-  }
-
-  if (isPro) {
-    return (
-      <View style={[styles.proContainer, compact && styles.compactPro]}>
-        <View style={styles.proContent}>
-          <Ionicons name="diamond" size={16} color={Colors.primary} />
-          <Text style={styles.proText}>Pro Plan - Unlimited Messages</Text>
-        </View>
-      </View>
-    );
-  }
 
   const getProgressBarColor = () => {
     if (isAtLimit) return Colors.error;
@@ -56,7 +32,7 @@ export const MessageLimitIndicator: React.FC<MessageLimitIndicatorProps> = ({
   };
 
   const getStatusText = () => {
-    if (isAtLimit) return 'Limit Reached';
+    if (isAtLimit) return 'Daily limit reached';
     if (isNearLimit) return 'Near Limit';
     return 'Messages';
   };
@@ -69,35 +45,24 @@ export const MessageLimitIndicator: React.FC<MessageLimitIndicatorProps> = ({
 
   if (compact) {
     return (
-      <TouchableOpacity 
-        style={[styles.compactContainer, { borderColor: getProgressBarColor() }]}
-        onPress={showUpgradeButton ? showUpgradePrompt : undefined}
-        disabled={!showUpgradeButton}
-      >
+      <View style={[styles.compactContainer, { borderColor: getProgressBarColor() }]}>
         <View style={styles.compactContent}>
           <Text style={[styles.compactText, { color: getStatusColor() }]}>
             {messagesUsed}/{messagesLimit}
           </Text>
-          {showUpgradeButton && (
-            <Ionicons 
-              name={isAtLimit ? "warning" : "chevron-up"} 
-              size={14} 
-              color={getProgressBarColor()} 
-            />
-          )}
         </View>
         <View style={styles.compactProgressBar}>
-          <View 
+          <View
             style={[
-              styles.compactProgress, 
-              { 
+              styles.compactProgress,
+              {
                 width: `${Math.min(usagePercentage, 100)}%`,
                 backgroundColor: getProgressBarColor()
               }
-            ]} 
+            ]}
           />
         </View>
-      </TouchableOpacity>
+      </View>
     );
   }
 
@@ -114,46 +79,23 @@ export const MessageLimitIndicator: React.FC<MessageLimitIndicatorProps> = ({
 
       <View style={styles.progressSection}>
         <View style={styles.progressBar}>
-          <View 
+          <View
             style={[
-              styles.progress, 
-              { 
+              styles.progress,
+              {
                 width: `${Math.min(usagePercentage, 100)}%`,
                 backgroundColor: getProgressBarColor()
               }
-            ]} 
+            ]}
           />
         </View>
-        
+
         {messagesRemaining > 0 && (
           <Text style={styles.remainingText}>
             {messagesRemaining} remaining
           </Text>
         )}
       </View>
-
-      {isNearLimit && showUpgradeButton && (
-        <TouchableOpacity 
-          style={[styles.upgradeButton, { borderColor: getProgressBarColor() }]}
-          onPress={onUpgradePress || showUpgradePrompt}
-          disabled={loading}
-        >
-          <Ionicons name="diamond-outline" size={16} color={getProgressBarColor()} />
-          <Text style={[styles.upgradeText, { color: getProgressBarColor() }]}>
-            {isAtLimit ? 'Upgrade to Continue' : 'Upgrade for Unlimited'}
-          </Text>
-          <Ionicons name="chevron-forward" size={14} color={getProgressBarColor()} />
-        </TouchableOpacity>
-      )}
-
-      {isAtLimit && (
-        <View style={styles.limitReachedContainer}>
-          <Ionicons name="warning" size={16} color={Colors.error} />
-          <Text style={styles.limitReachedText}>
-            You've reached your free message limit. Upgrade to Pro for unlimited messages!
-          </Text>
-        </View>
-      )}
     </View>
   );
 };
@@ -204,33 +146,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'right',
   },
-  upgradeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.small,
-    borderWidth: 1,
-    gap: Spacing.xs,
-  },
-  upgradeText: {
-    ...Typography.caption,
-    fontWeight: '600',
-  },
-  limitReachedContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.sm,
-    backgroundColor: `${Colors.error}15`,
-    borderRadius: BorderRadius.small,
-    gap: Spacing.xs,
-  },
-  limitReachedText: {
-    ...Typography.caption,
-    color: Colors.error,
-    flex: 1,
-  },
   // Compact styles
   compactContainer: {
     backgroundColor: Colors.surface,
@@ -238,10 +153,6 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     marginBottom: Spacing.sm,
     borderWidth: 1,
-  },
-  compactPro: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
   },
   compactContent: {
     flexDirection: 'row',
@@ -262,28 +173,5 @@ const styles = StyleSheet.create({
   compactProgress: {
     height: '100%',
     borderRadius: 1.5,
-  },
-  proContainer: {
-    backgroundColor: `${Colors.primary}15`,
-    borderRadius: BorderRadius.medium,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    alignItems: 'center',
-  },
-  compactProContainer: {
-    padding: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  proContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  proText: {
-    ...Typography.caption,
-    color: Colors.primary,
-    fontWeight: '600',
   },
 });

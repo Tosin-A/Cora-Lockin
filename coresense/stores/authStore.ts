@@ -6,6 +6,7 @@
 import { create } from "zustand";
 import { supabase } from "../utils/supabase";
 import { startGoogleOAuth, handleOAuthError } from "../utils/oauth";
+import { startAppleSignIn } from "../utils/appleAuth";
 import { clearAuthTokenCache } from "../utils/coresenseApi";
 import { API_BASE_URL } from "../utils/apiConfig";
 import type { User } from "../types";
@@ -66,11 +67,13 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   googleLoading: boolean;
+  appleLoading: boolean;
   deletingAccount: boolean;
   pendingPasswordReset: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
   signOut: () => Promise<void>;
   checkAuth: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -84,6 +87,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
   isAuthenticated: false,
   googleLoading: false,
+  appleLoading: false,
   deletingAccount: false,
   pendingPasswordReset: false,
 
@@ -114,11 +118,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         console.log("checkAuth: Session found, user:", session.user.id);
+        const fullName = session.user.user_metadata?.full_name || null;
         const mappedUser: User = {
           id: session.user.id,
           email: session.user.email || "",
-          username: session.user.email?.split("@")[0] || "",
-          full_name: session.user.user_metadata?.full_name || null,
+          username: fullName || session.user.email?.split("@")[0] || "",
+          full_name: fullName,
           avatar_url: session.user.user_metadata?.avatar_url || null,
           created_at: session.user.created_at,
         };
@@ -172,11 +177,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       console.log("[AuthStore] SignIn success, user:", data.user.id);
 
+      const name = data.user.user_metadata?.full_name || null;
       const mappedUser: User = {
         id: data.user.id,
         email: data.user.email || "",
-        username: data.user.email?.split("@")[0] || "",
-        full_name: data.user.user_metadata?.full_name || null,
+        username: name || data.user.email?.split("@")[0] || "",
+        full_name: name,
         avatar_url: data.user.user_metadata?.avatar_url || null,
         created_at: data.user.created_at,
       };
@@ -255,11 +261,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       // User is immediately confirmed and logged in
+      const signUpName = fullName || data.user.user_metadata?.full_name || null;
       const mappedUser: User = {
         id: data.user.id,
         email: data.user.email || "",
-        username: data.user.email?.split("@")[0] || "",
-        full_name: data.user.user_metadata?.full_name || null,
+        username: signUpName || data.user.email?.split("@")[0] || "",
+        full_name: signUpName,
         avatar_url: data.user.user_metadata?.avatar_url || null,
         created_at: data.user.created_at,
       };
@@ -295,11 +302,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       console.log("[AuthStore] Google OAuth success, user:", data.data.user.id);
 
+      const googleName = data.data.user.user_metadata?.full_name || null;
       const mappedUser: User = {
         id: data.data.user.id,
         email: data.data.user.email || "",
-        username: data.data.user.email?.split("@")[0] || "",
-        full_name: data.data.user.user_metadata?.full_name || null,
+        username: googleName || data.data.user.email?.split("@")[0] || "",
+        full_name: googleName,
         avatar_url: data.data.user.user_metadata?.avatar_url || null,
         created_at: data.data.user.created_at,
       };
@@ -315,6 +323,69 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error: any) {
       console.error("[AuthStore] Google OAuth exception:", error);
       set({ googleLoading: false });
+      throw error;
+    }
+  },
+
+  signInWithApple: async () => {
+    set({ appleLoading: true });
+    try {
+      console.log("[AuthStore] Starting Apple Sign-In...");
+
+      const { data, fullName, error } = await startAppleSignIn();
+
+      if (error) {
+        console.error("[AuthStore] Apple Sign-In error:", error);
+        throw error;
+      }
+
+      if (!data?.user) {
+        console.error("[AuthStore] No user returned from Apple Sign-In");
+        throw new Error("Apple sign-in failed. Please try again.");
+      }
+
+      console.log("[AuthStore] Apple Sign-In success, user:", data.user.id);
+
+      // Use Apple-provided name, falling back to stored metadata, then email prefix
+      const appleName =
+        fullName ||
+        data.user.user_metadata?.full_name ||
+        null;
+
+      const mappedUser: User = {
+        id: data.user.id,
+        email: data.user.email || "",
+        username: appleName || data.user.email?.split("@")[0] || "",
+        full_name: appleName,
+        avatar_url: data.user.user_metadata?.avatar_url || null,
+        created_at: data.user.created_at,
+      };
+
+      set({
+        user: mappedUser,
+        isAuthenticated: true,
+        appleLoading: false,
+      });
+
+      // Always initialize for Apple users — ensures profile and
+      // message limits exist, and updates name if it was missing.
+      try {
+        await initializeUserForNewSignup(
+          data.user.id,
+          data.user.email || "",
+          appleName || undefined,
+        );
+      } catch (initError) {
+        console.warn(
+          "[AuthStore] Apple user initialization warning:",
+          initError,
+        );
+      }
+
+      await get().checkAuth();
+    } catch (error: any) {
+      console.error("[AuthStore] Apple Sign-In exception:", error);
+      set({ appleLoading: false });
       throw error;
     }
   },

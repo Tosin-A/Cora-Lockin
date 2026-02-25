@@ -48,13 +48,17 @@ import {
 import {
   registerForPushNotifications,
 } from "../utils/notificationService";
-import { useSubscriptionStore } from "../stores/subscriptionStore";
 
 // ============================================================================
 // CONSTANTS (UNCHANGED)
 // ============================================================================
 
 const FEEDBACK_EMAIL = "adedokuntosin1@gmail.com";
+
+const getDisplayEmail = (email?: string) =>
+  email && email.includes("@privaterelay.appleid.com")
+    ? "Private Apple Email"
+    : email;
 
 const DEFAULT_PREFERENCES = {
   id: "default",
@@ -210,17 +214,7 @@ export default function SettingsScreen() {
   const { colors } = useTheme();
   const { user } = useAuthStore();
   const { preferences, fetchPreferences, updatePreferences, profile } = useUserStore();
-  const {
-    isPro,
-    status: subStatus,
-    currentPeriodEnd,
-    cancelAtPeriodEnd,
-    loading: subLoading,
-    checkoutLoading,
-    loadSubscriptionStatus,
-    startCheckout,
-    openCustomerPortal,
-  } = useSubscriptionStore();
+  // Subscription store removed for App Store compliance
 
   // ============================================================================
   // STATE (Original names preserved)
@@ -299,10 +293,7 @@ export default function SettingsScreen() {
       if (user) {
         setIsLoading(true);
         setNotifPrefsLoading(true);
-        await Promise.all([
-          fetchPreferences(user.id),
-          loadSubscriptionStatus(),
-        ]);
+        await fetchPreferences(user.id);
         const { data: notifData } = await coresenseApi.getNotificationPreferences();
         if (notifData) {
           setNotifPrefs(notifData);
@@ -623,57 +614,12 @@ export default function SettingsScreen() {
                   <Text style={[styles.accountName, { color: colors.textPrimary }]}>
                     {profile?.username || "Your Account"}
                   </Text>
-                  {isPro && (
-                    <View style={[styles.proPill, { backgroundColor: colors.primary }]}>
-                      <Text style={styles.proPillText}>PRO</Text>
-                    </View>
-                  )}
                 </View>
-                <Text style={[styles.accountEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
+                <Text style={[styles.accountEmail, { color: colors.textSecondary }]}>{getDisplayEmail(user?.email)}</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </View>
           </TouchableOpacity>
-
-          {/* ================================================================ */}
-          {/* SECTION: CoreSense Pro (upgrade CTA — hidden for Pro users) */}
-          {/* ================================================================ */}
-          {!isPro && (
-            <Card style={styles.section}>
-              <SectionHeader
-                icon="diamond-outline"
-                title="CoreSense Pro"
-                iconColor={colors.primary}
-                colors={colors}
-              />
-
-              <View style={styles.proFeaturesList}>
-                {[
-                  '20 messages per day',
-                  '100 messages per week',
-                  'Priority coaching responses',
-                ].map((feature) => (
-                  <View key={feature} style={styles.proFeatureItem}>
-                    <Ionicons name="checkmark" size={16} color={colors.primary} />
-                    <Text style={[styles.proFeatureText, { color: colors.textSecondary }]}>{feature}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <TouchableOpacity
-                style={[styles.proUpgradeButton, { backgroundColor: colors.primary }]}
-                onPress={startCheckout}
-                activeOpacity={0.8}
-                disabled={checkoutLoading}
-              >
-                {checkoutLoading ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.proUpgradeButtonText}>Upgrade for £8.99/month</Text>
-                )}
-              </TouchableOpacity>
-            </Card>
-          )}
 
           {/* ================================================================ */}
           {/* SECTION 2: Appearance */}

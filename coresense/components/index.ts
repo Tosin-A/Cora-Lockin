@@ -4,6 +4,7 @@
 
 export { PurpleButton } from "./PurpleButton";
 export { GoogleSignInButton } from "./GoogleSignInButton";
+export { AppleSignInButton } from "./AppleSignInButton";
 export { Card } from "./Card";
 export { StatTile } from "./StatTile";
 export { ToggleSwitch } from "./ToggleSwitch";
