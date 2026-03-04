@@ -20,6 +20,7 @@ import { clearAuthTokenCache, warmupServer } from '../utils/coresenseApi';
 import { useSubscriptionStore } from '../stores/subscriptionStore';
 import { useChatStore } from '../stores/chatStore';
 import { initializeHealthKit } from '../utils/healthService';
+import { initIAP, endIAP } from '../utils/iap';
 import {
   setNotificationNavigationRef,
   setupNotificationHandlers,
@@ -254,6 +255,7 @@ export default function AppNavigator() {
         }
       } else if (event === 'SIGNED_OUT') {
         clearAuthTokenCache();
+        endIAP();
         console.log('Auth state changed: SIGNED_OUT - clearing auth state');
         useAuthStore.setState({
           user: null,
@@ -446,6 +448,8 @@ export default function AppNavigator() {
 
       warmupServer();
       useChatStore.getState().loadChatHistory({ silent: true });
+      initIAP();
+      useSubscriptionStore.getState().loadSubscriptionStatus();
 
       // Initialize HealthKit
       initializeHealthKit()

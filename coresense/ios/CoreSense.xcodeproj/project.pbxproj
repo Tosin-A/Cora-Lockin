@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		187324A72F58F5CF00C4FCBB /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 187324A62F58F5CF00C4FCBB /* StoreKit.framework */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		428411648F0D5F70383BF71C /* libPods-CoreSense.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F4C779C5D94AF530DA2F86C8 /* libPods-CoreSense.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
@@ -20,6 +21,7 @@
 		13B07F961A680F5B00A75B9A /* CoreSense.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CoreSense.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = CoreSense/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = CoreSense/Info.plist; sourceTree = "<group>"; };
+		187324A62F58F5CF00C4FCBB /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		4FDDC11B5A934E2CBF88852A /* Pods-CoreSense.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CoreSense.release.xcconfig"; path = "Target Support Files/Pods-CoreSense/Pods-CoreSense.release.xcconfig"; sourceTree = "<group>"; };
 		697F1A802EBB36BCA9809ECB /* Pods-CoreSense.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CoreSense.debug.xcconfig"; path = "Target Support Files/Pods-CoreSense/Pods-CoreSense.debug.xcconfig"; sourceTree = "<group>"; };
 		7E4DD95282968019C880B945 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = CoreSense/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -38,6 +40,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				428411648F0D5F70383BF71C /* libPods-CoreSense.a in Frameworks */,
+				187324A72F58F5CF00C4FCBB /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,6 +80,7 @@
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				187324A62F58F5CF00C4FCBB /* StoreKit.framework */,
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				F4C779C5D94AF530DA2F86C8 /* libPods-CoreSense.a */,
 			);

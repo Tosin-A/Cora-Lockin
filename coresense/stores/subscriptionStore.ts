@@ -1,19 +1,29 @@
 /**
  * Subscription Store
- * Manages Pro subscription state, Stripe Checkout flow, and portal access.
+ * Manages Pro subscription state.
+ * IAP only (StoreKit on iOS). No Stripe.
  */
 
 import { create } from 'zustand';
-import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 import { Alert } from 'react-native';
 import { coresenseApi } from '../utils/coresenseApi';
 import { useMessageLimitStore } from './messageLimitStore';
+import {
+  isIAPAvailable,
+  initIAP,
+  purchaseProSubscription,
+  getReceiptForVerification,
+  finishIAPTransaction,
+  showManageSubscriptionsIOS,
+} from '../utils/iap';
 
 interface SubscriptionState {
   isPro: boolean;
   status: string;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  source: 'stripe' | 'apple' | null;
   loading: boolean;
   checkoutLoading: boolean;
   error: string | null;
@@ -30,6 +40,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   status: 'inactive',
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
+  source: null,
   loading: false,
   checkoutLoading: false,
   error: null,
@@ -48,6 +59,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           status: data.status,
           currentPeriodEnd: data.current_period_end,
           cancelAtPeriodEnd: data.cancel_at_period_end,
+          source: data.source ?? null,
           loading: false,
         });
       }
@@ -57,22 +69,55 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   },
 
   startCheckout: async () => {
+    if (Platform.OS !== 'ios' || !isIAPAvailable()) {
+      Alert.alert(
+        'Pro on iOS',
+        'Pro subscription is available via In-App Purchase on iOS. Please use an iPhone or iPad to upgrade.',
+      );
+      return;
+    }
     set({ checkoutLoading: true, error: null });
     try {
-      const { data, error } = await coresenseApi.createCheckoutSession();
-
+      await initIAP();
+      const purchase = await purchaseProSubscription();
+      if (!purchase) {
+        set({ checkoutLoading: false });
+        return;
+      }
+      const receipt = await getReceiptForVerification();
+      if (!receipt) {
+        set({ checkoutLoading: false });
+        Alert.alert(
+          'Verification Issue',
+          'Could not retrieve receipt. Please try again or contact support.',
+        );
+        return;
+      }
+      const { data, error } = await coresenseApi.verifyIAPPurchase({
+        platform: 'ios',
+        productId: purchase.productId,
+        transactionId: purchase.transactionId ?? '',
+        receipt,
+      });
       if (error) {
         set({ error, checkoutLoading: false });
         Alert.alert('Error', error);
         return;
       }
-
-      if (data?.url) {
-        await Linking.openURL(data.url);
+      if (data) {
+        set({
+          isPro: data.is_pro,
+          status: data.status,
+          currentPeriodEnd: data.current_period_end,
+          cancelAtPeriodEnd: data.cancel_at_period_end,
+          source: 'apple',
+        });
+        await finishIAPTransaction(purchase);
+        useMessageLimitStore.getState().loadUsageStats();
       }
     } catch (e: any) {
       set({ error: e.message || 'Failed to start checkout', checkoutLoading: false });
-      Alert.alert('Error', 'Could not open checkout. Please try again.');
+      Alert.alert('Error', e.message || 'Could not complete purchase. Please try again.');
     } finally {
       set({ checkoutLoading: false });
     }
@@ -80,42 +125,35 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 
   openCustomerPortal: async () => {
     try {
-      const { data, error } = await coresenseApi.createPortalSession();
-      if (error) {
-        Alert.alert('Error', error);
-        return;
-      }
-      if (data?.url) {
-        await Linking.openURL(data.url);
+      if (Platform.OS === 'ios') {
+        await showManageSubscriptionsIOS();
+      } else {
+        Alert.alert(
+          'Pro on iOS',
+          'Manage your Pro subscription in the App Store on your iPhone or iPad.',
+        );
       }
     } catch (e: any) {
-      Alert.alert('Error', 'Could not open billing portal. Please try again.');
+      Alert.alert('Error', 'Could not open subscription settings. Please try again.');
     }
   },
 
   cancelSubscription: async () => {
     try {
-      const { data, error } = await coresenseApi.cancelSubscription();
-      if (error) {
-        Alert.alert('Error', error);
-        return;
-      }
-      if (data) {
-        set({
-          cancelAtPeriodEnd: data.cancel_at_period_end,
-          currentPeriodEnd: data.current_period_end,
-        });
+      if (Platform.OS === 'ios') {
+        await showManageSubscriptionsIOS();
         Alert.alert(
-          'Subscription Cancelled',
-          `Your Pro access will remain active until ${
-            data.current_period_end
-              ? new Date(data.current_period_end).toLocaleDateString()
-              : 'the end of your billing period'
-          }.`,
+          'Manage Subscription',
+          'Use the App Store settings to cancel or modify your subscription.',
+        );
+      } else {
+        Alert.alert(
+          'Pro on iOS',
+          'Manage your Pro subscription in the App Store on your iPhone or iPad.',
         );
       }
     } catch (e: any) {
-      Alert.alert('Error', 'Could not cancel subscription. Please try again.');
+      Alert.alert('Error', 'Could not open subscription settings. Please try again.');
     }
   },
 

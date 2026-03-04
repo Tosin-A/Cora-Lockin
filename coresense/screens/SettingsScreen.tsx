@@ -35,6 +35,7 @@ import { ToggleSwitch } from "../components/ToggleSwitch";
 import { PurpleButton } from "../components/PurpleButton";
 import { useAuthStore } from "../stores/authStore";
 import { useUserStore } from "../stores/userStore";
+import { useSubscriptionStore } from "../stores/subscriptionStore";
 import {
   requestHealthKitPermissions,
 } from "../utils/healthService";
@@ -214,7 +215,10 @@ export default function SettingsScreen() {
   const { colors } = useTheme();
   const { user } = useAuthStore();
   const { preferences, fetchPreferences, updatePreferences, profile } = useUserStore();
-  // Subscription store removed for App Store compliance
+  const isPro = useSubscriptionStore((s) => s.isPro);
+  const checkoutLoading = useSubscriptionStore((s) => s.checkoutLoading);
+  const startCheckout = useSubscriptionStore((s) => s.startCheckout);
+  const openCustomerPortal = useSubscriptionStore((s) => s.openCustomerPortal);
 
   // ============================================================================
   // STATE (Original names preserved)
@@ -614,12 +618,67 @@ export default function SettingsScreen() {
                   <Text style={[styles.accountName, { color: colors.textPrimary }]}>
                     {profile?.username || "Your Account"}
                   </Text>
+                  {isPro && (
+                    <View style={[styles.proPill, { backgroundColor: '#007AFF' }]}>
+                      <Text style={styles.proPillText}>Pro</Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={[styles.accountEmail, { color: colors.textSecondary }]}>{getDisplayEmail(user?.email)}</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </View>
           </TouchableOpacity>
+
+          {/* ================================================================ */}
+          {/* SECTION: Pro Subscription */}
+          {/* ================================================================ */}
+          <Card style={styles.section}>
+            <SectionHeader icon="star-outline" title="Pro" iconColor="#007AFF" colors={colors} />
+            {isPro ? (
+              <>
+                <View style={styles.proSubscriptionRow}>
+                  <View style={[styles.proPill, { backgroundColor: '#007AFF' }]}>
+                    <Text style={styles.proPillText}>Active</Text>
+                  </View>
+                  <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary }]}>
+                    10 messages/day, 30/week
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.proManageButton, { backgroundColor: colors.surfaceMedium }]}
+                  onPress={openCustomerPortal}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="settings-outline" size={20} color={colors.primary} />
+                  <Text style={[styles.proManageButtonText, { color: colors.textPrimary }]}>
+                    Manage subscription
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary, marginBottom: Spacing.md }]}>
+                  Get 10 messages per day and 30 per week. Unlock unlimited coaching potential.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.proUpgradeButton, { backgroundColor: '#007AFF' }]}
+                  onPress={startCheckout}
+                  disabled={checkoutLoading}
+                  activeOpacity={0.7}
+                >
+                  {checkoutLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.proUpgradeButtonText}>
+                      Upgrade to Pro
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </Card>
 
           {/* ================================================================ */}
           {/* SECTION 2: Appearance */}
@@ -1301,7 +1360,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
-    backgroundColor: Colors.primary,
   },
   proPillText: {
     color: '#FFFFFF',
@@ -1577,6 +1635,16 @@ const styles = StyleSheet.create({
   },
 
   // Pro Section
+  proSubscriptionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  proSubscriptionDesc: {
+    ...Typography.bodySmall,
+    lineHeight: 20,
+  },
   proBadgeRow: {
     flexDirection: "row",
     alignItems: "center",

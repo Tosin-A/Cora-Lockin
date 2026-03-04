@@ -1,9 +1,9 @@
 """
 Message Limit Service
-Daily/weekly message limits with pro upgrade support.
+Daily/weekly message limits.
 
-Free: 10 messages/day, 30 messages/week
-Pro:  20 messages/day, 100 messages/week
+Free: 5 messages/day, 15 messages/week
+Pro: 10 messages/day, 30 messages/week (IAP only)
 """
 
 from typing import Dict, Any, Optional, Tuple
@@ -15,10 +15,10 @@ from backend.database.supabase_client import get_supabase_client
 logger = logging.getLogger(__name__)
 
 # Limit configuration
-FREE_DAILY_LIMIT = 10
-FREE_WEEKLY_LIMIT = 30
-PRO_DAILY_LIMIT = 20
-PRO_WEEKLY_LIMIT = 100
+FREE_DAILY_LIMIT = 5
+FREE_WEEKLY_LIMIT = 15
+PRO_DAILY_LIMIT = 10
+PRO_WEEKLY_LIMIT = 30
 
 
 def _needs_daily_reset(last_reset: Optional[str]) -> bool:
@@ -128,10 +128,9 @@ def check_message_limit(user_id: str) -> Tuple[bool, Optional[str], Dict[str, An
     """
     try:
         limits = get_user_message_limit(user_id)
-        is_pro = limits.get('is_pro', False)
 
-        daily_limit = PRO_DAILY_LIMIT if is_pro else limits.get('daily_limit', FREE_DAILY_LIMIT)
-        weekly_limit = PRO_WEEKLY_LIMIT if is_pro else limits.get('weekly_limit', FREE_WEEKLY_LIMIT)
+        daily_limit = limits.get('daily_limit', FREE_DAILY_LIMIT)
+        weekly_limit = limits.get('weekly_limit', FREE_WEEKLY_LIMIT)
         daily_used = limits.get('daily_messages_used', 0)
         weekly_used = limits.get('weekly_messages_used', 0)
 
@@ -179,62 +178,13 @@ def increment_message_count(user_id: str) -> bool:
         return False
 
 
-def upgrade_to_pro(user_id: str) -> bool:
-    """Upgrade user to pro plan."""
-    try:
-        client = get_supabase_client()
-        response = client.table("user_message_limits")\
-            .update({
-                "is_pro": True,
-                "daily_limit": PRO_DAILY_LIMIT,
-                "weekly_limit": PRO_WEEKLY_LIMIT,
-                "pro_upgraded_at": datetime.now(timezone.utc).isoformat()
-            })\
-            .eq("user_id", user_id)\
-            .execute()
-
-        success = len(response.data) > 0 if response.data else False
-        if success:
-            logger.info(f"Upgraded user {user_id} to pro plan")
-        return success
-
-    except Exception as e:
-        logger.error(f"Failed to upgrade user {user_id} to pro: {e}", exc_info=True)
-        return False
-
-
-def downgrade_from_pro(user_id: str) -> bool:
-    """Revert a user from pro to free plan."""
-    try:
-        client = get_supabase_client()
-        response = client.table("user_message_limits")\
-            .update({
-                "is_pro": False,
-                "daily_limit": FREE_DAILY_LIMIT,
-                "weekly_limit": FREE_WEEKLY_LIMIT,
-                "pro_upgraded_at": None,
-            })\
-            .eq("user_id", user_id)\
-            .execute()
-
-        success = len(response.data) > 0 if response.data else False
-        if success:
-            logger.info(f"Downgraded user {user_id} from pro plan")
-        return success
-
-    except Exception as e:
-        logger.error(f"Failed to downgrade user {user_id} from pro: {e}", exc_info=True)
-        return False
-
-
 def get_user_usage_stats(user_id: str) -> Dict[str, Any]:
     """Get user's message usage statistics with daily/weekly breakdown."""
     try:
         limits = get_user_message_limit(user_id)
-        is_pro = limits.get('is_pro', False)
 
-        daily_limit = PRO_DAILY_LIMIT if is_pro else limits.get('daily_limit', FREE_DAILY_LIMIT)
-        weekly_limit = PRO_WEEKLY_LIMIT if is_pro else limits.get('weekly_limit', FREE_WEEKLY_LIMIT)
+        daily_limit = limits.get('daily_limit', FREE_DAILY_LIMIT)
+        weekly_limit = limits.get('weekly_limit', FREE_WEEKLY_LIMIT)
         daily_used = limits.get('daily_messages_used', 0)
         weekly_used = limits.get('weekly_messages_used', 0)
 
@@ -246,7 +196,6 @@ def get_user_usage_stats(user_id: str) -> Dict[str, Any]:
         return {
             "messages_used": limits.get('messages_used', 0),
             "messages_limit": daily_limit,
-            "is_pro": is_pro,
             "messages_remaining": messages_remaining,
             "daily_used": daily_used,
             "daily_limit": daily_limit,
@@ -254,7 +203,6 @@ def get_user_usage_stats(user_id: str) -> Dict[str, Any]:
             "weekly_used": weekly_used,
             "weekly_limit": weekly_limit,
             "weekly_remaining": weekly_remaining,
-            "pro_upgraded_at": limits.get('pro_upgraded_at'),
             "usage_percentage": min(100.0, (daily_used / daily_limit) * 100) if daily_limit > 0 else 0,
             "limit_type": (
                 "daily" if daily_used >= daily_limit
@@ -268,7 +216,6 @@ def get_user_usage_stats(user_id: str) -> Dict[str, Any]:
         return {
             "messages_used": 0,
             "messages_limit": FREE_DAILY_LIMIT,
-            "is_pro": False,
             "messages_remaining": FREE_DAILY_LIMIT,
             "daily_used": 0,
             "daily_limit": FREE_DAILY_LIMIT,
@@ -276,10 +223,58 @@ def get_user_usage_stats(user_id: str) -> Dict[str, Any]:
             "weekly_used": 0,
             "weekly_limit": FREE_WEEKLY_LIMIT,
             "weekly_remaining": FREE_WEEKLY_LIMIT,
-            "pro_upgraded_at": None,
             "usage_percentage": 0.0,
             "limit_type": None,
         }
+
+
+def upgrade_to_pro(user_id: str) -> bool:
+    """Upgrade user to Pro limits (10/day, 30/week). Called when subscription activates."""
+    try:
+        client = get_supabase_client()
+        response = client.table("user_message_limits")\
+            .update({
+                "is_pro": True,
+                "daily_limit": PRO_DAILY_LIMIT,
+                "weekly_limit": PRO_WEEKLY_LIMIT,
+                "pro_upgraded_at": datetime.now(timezone.utc).isoformat(),
+            })\
+            .eq("user_id", user_id)\
+            .execute()
+
+        if response.data and len(response.data) > 0:
+            logger.info("Upgraded user %s to Pro limits (%d/day, %d/week)", user_id, PRO_DAILY_LIMIT, PRO_WEEKLY_LIMIT)
+            return True
+
+        # User may not have a row yet; ensure one exists
+        get_user_message_limit(user_id)
+        return upgrade_to_pro(user_id)
+    except Exception as e:
+        logger.error("Failed to upgrade user %s to Pro: %s", user_id, e, exc_info=True)
+        return False
+
+
+def downgrade_from_pro(user_id: str) -> bool:
+    """Downgrade user to free limits (5/day, 15/week). Called when subscription ends."""
+    try:
+        client = get_supabase_client()
+        response = client.table("user_message_limits")\
+            .update({
+                "is_pro": False,
+                "daily_limit": FREE_DAILY_LIMIT,
+                "weekly_limit": FREE_WEEKLY_LIMIT,
+                "pro_upgraded_at": None,
+            })\
+            .eq("user_id", user_id)\
+            .execute()
+
+        success = response.data and len(response.data) > 0
+        if success:
+            logger.info("Downgraded user %s to free limits (%d/day, %d/week)", user_id, FREE_DAILY_LIMIT, FREE_WEEKLY_LIMIT)
+        return success
+    except Exception as e:
+        logger.error("Failed to downgrade user %s from Pro: %s", user_id, e, exc_info=True)
+        return False
 
 
 def reset_message_limits(user_id: str) -> bool:

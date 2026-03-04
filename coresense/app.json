@@ -18,6 +18,10 @@
       "infoPlist": {
         "NSHealthShareUsageDescription": "CoreSense needs access to your health data to provide personalized coaching insights.",
         "NSHealthUpdateUsageDescription": "CoreSense needs access to update your health data for tracking purposes.",
+        "NSCalendarsUsageDescription": "CoreSense needs calendar access to schedule your commitments and find the best available times.",
+        "NSCalendarsFullAccessUsageDescription": "CoreSense needs calendar access to schedule your commitments and find the best available times.",
+        "NSRemindersUsageDescription": "CoreSense needs reminders access to help you stay on track with your goals.",
+        "NSRemindersFullAccessUsageDescription": "CoreSense needs reminders access to help you stay on track with your goals.",
         "UIBackgroundModes": ["remote-notification"]
       },
       "entitlements": {
@@ -38,6 +42,13 @@
     "plugins": [
       "expo-font",
       [
+        "expo-calendar",
+        {
+          "calendarPermission": "CoreSense needs calendar access to schedule your commitments and find the best available times.",
+          "remindersPermission": "CoreSense needs reminders access to help you stay on track with your goals."
+        }
+      ],
+      [
         "expo-apple-authentication",
         {
           "appleTeamId": "6C383NJ99X"
@@ -48,9 +59,13 @@
         {
           "ios": {
             "newArchEnabled": true
+          },
+          "android": {
+            "kotlinVersion": "2.1.20"
           }
         }
       ],
+      "react-native-iap",
       [
         "expo-notifications",
         {

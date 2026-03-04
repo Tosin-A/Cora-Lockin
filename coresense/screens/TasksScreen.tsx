@@ -17,6 +17,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useTodosStore } from '../stores/todosStore';
 import { useChatStore } from '../stores/chatStore';
 import type { Todo } from '../types/todos';
+import { scheduleWithSmartGap } from '../utils/calendarService';
 
 interface CoachSuggestion {
   id: string;
@@ -63,6 +65,9 @@ export default function TasksScreen() {
   const [newTaskDueTime, setNewTaskDueTime] = useState<string | undefined>(undefined);
   const [newTaskReminderEnabled, setNewTaskReminderEnabled] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<Todo | null>(null);
+  const [calendaringTasks, setCalendaringTasks] = useState<Set<string>>(new Set());
+  const [calendarPickerTask, setCalendarPickerTask] = useState<Todo | null>(null);
+  const [calendarPickerDate, setCalendarPickerDate] = useState<string>('');
 
   const pendingTodos = getPendingTodos();
   const completedTodos = getCompletedTodos();
@@ -209,6 +214,64 @@ export default function TasksScreen() {
     });
   }, [createTodo]);
 
+  const handleAddTaskToCalendar = useCallback(async (todo: Todo, dateOverride?: string) => {
+    const targetDateStr = dateOverride || todo.due_date;
+    if (!targetDateStr) {
+      // No due date – open date picker
+      setCalendarPickerDate(new Date().toISOString().split('T')[0]);
+      setCalendarPickerTask(todo);
+      return;
+    }
+
+    setCalendaringTasks(prev => new Set(prev).add(todo.id));
+    try {
+      // Parse YYYY-MM-DD as local date (not UTC)
+      const [y, mo, d] = targetDateStr.split('-').map(Number);
+      const targetDate = new Date(y, mo - 1, d);
+
+      // Derive duration from description if it contains "X min" pattern
+      let durationMinutes = 60;
+      const durationMatch = todo.description?.match(/(\d+)\s*min/i);
+      if (durationMatch) {
+        const parsed = parseInt(durationMatch[1], 10);
+        if (parsed > 0 && parsed <= 480) durationMinutes = parsed;
+      }
+
+      const result = await scheduleWithSmartGap(
+        todo.title,
+        targetDate,
+        durationMinutes,
+        todo.due_time || undefined,
+        todo.description || undefined
+      );
+      if (result.success && result.slotUsed) {
+        const timeStr = result.slotUsed.start.toLocaleTimeString(undefined, {
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+        Alert.alert('Added to Calendar', `"${todo.title}" scheduled for ${timeStr}`);
+      } else {
+        Alert.alert('Calendar Error', result.error || 'Could not add event to calendar.');
+      }
+    } catch {
+      Alert.alert('Calendar Error', 'Something went wrong. Please try again.');
+    } finally {
+      setCalendaringTasks(prev => {
+        const next = new Set(prev);
+        next.delete(todo.id);
+        return next;
+      });
+    }
+  }, []);
+
+  const handleCalendarPickerConfirm = useCallback(async () => {
+    if (!calendarPickerTask || !calendarPickerDate) return;
+    const task = calendarPickerTask;
+    const date = calendarPickerDate;
+    setCalendarPickerTask(null);
+    await handleAddTaskToCalendar(task, date);
+  }, [calendarPickerTask, calendarPickerDate, handleAddTaskToCalendar]);
+
   const handleAddTask = useCallback(async () => {
     if (!newTaskTitle.trim()) return;
 
@@ -284,6 +347,7 @@ export default function TasksScreen() {
   const renderTaskItem = (todo: Todo) => {
     const isCompleting = completingTasks.has(todo.id);
     const isCompleted = todo.status === 'completed' || isCompleting;
+    const isCalendaring = calendaringTasks.has(todo.id);
 
     return (
       <View
@@ -355,6 +419,22 @@ export default function TasksScreen() {
             </Text>
           )}
         </TouchableOpacity>
+
+        {!isCompleted && (
+          <TouchableOpacity
+            style={styles.calendarButton}
+            onPress={() => handleAddTaskToCalendar(todo)}
+            disabled={isCalendaring}
+            hitSlop={{ top: 10, bottom: 10, left: 5, right: 10 }}
+            activeOpacity={0.7}
+          >
+            {isCalendaring ? (
+              <ActivityIndicator size="small" color={colors.textTertiary} />
+            ) : (
+              <Ionicons name="calendar-outline" size={18} color={colors.textTertiary} />
+            )}
+          </TouchableOpacity>
+        )}
 
         <View
           style={[
@@ -711,6 +791,73 @@ export default function TasksScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Calendar Date Picker Modal (for tasks without a due date) */}
+      <Modal
+        visible={!!calendarPickerTask}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCalendarPickerTask(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setCalendarPickerTask(null)}
+        />
+        <View style={[styles.detailModalContent, { backgroundColor: colors.surface }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Pick a Date</Text>
+            <TouchableOpacity onPress={() => setCalendarPickerTask(null)}>
+              <Ionicons name="close" size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.detailSectionLabel, { color: colors.textTertiary, marginBottom: Spacing.sm }]}>
+            When should "{calendarPickerTask?.title}" be scheduled?
+          </Text>
+
+          <View style={styles.dateOptionsRow}>
+            {[
+              { label: 'Today', value: new Date().toISOString().split('T')[0] },
+              { label: 'Tomorrow', value: getTomorrowDate() },
+              { label: 'Next Week', value: getNextWeekDate() },
+            ].map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[
+                  styles.dateOption,
+                  { borderColor: colors.border },
+                  calendarPickerDate === opt.value && { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
+                ]}
+                onPress={() => setCalendarPickerDate(opt.value)}
+              >
+                <Text style={[styles.dateOptionText, { color: colors.textPrimary }]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={[styles.modalButtons, { marginTop: Spacing.lg }]}>
+            <TouchableOpacity
+              style={[styles.modalCancelButton, { borderColor: colors.border }]}
+              onPress={() => setCalendarPickerTask(null)}
+            >
+              <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.modalSubmitButton,
+                { backgroundColor: colors.primary },
+                !calendarPickerDate && [styles.modalSubmitButtonDisabled, { backgroundColor: colors.surfaceMedium }],
+              ]}
+              onPress={handleCalendarPickerConfirm}
+              disabled={!calendarPickerDate}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#FFFFFF" />
+              <Text style={[styles.modalSubmitText, { color: '#FFFFFF' }]}>Schedule</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Task Detail Modal */}
       <Modal
         visible={!!selectedTaskDetail}
@@ -897,6 +1044,13 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.textSecondary,
     marginTop: 4,
+  },
+  calendarButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 4,
   },
   priorityDot: {
     width: 8,

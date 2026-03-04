@@ -95,6 +95,16 @@ interface ChatStore {
   // Message limit integration
   checkMessageLimit: () => boolean;
 
+  // Calendar integration
+  pendingCalendarEvent: {
+    title: string;
+    date: string;
+    preferred_time?: string;
+    duration_minutes: number;
+    notes?: string;
+  } | null;
+  clearPendingCalendarEvent: () => void;
+
   // Cache
   loadCachedMessages: () => Promise<void>;
 }
@@ -153,6 +163,9 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   // Assistant message reconciliation state
   pendingAssistantTempIds: [],
   lastRunId: null,
+
+  // Calendar integration
+  pendingCalendarEvent: null,
 
   // Actions
   sendMessage: async (text: string, isQuickAction = false) => {
@@ -263,6 +276,12 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       const functionCalls = data?.function_calls || [];
       if (functionCalls.some((fc: any) => fc.name === "create_user_task")) {
         useTodosStore.getState().fetchTodos();
+      }
+
+      // If the coach scheduled a calendar event, surface it for the user to confirm
+      const calendarCall = functionCalls.find((fc: any) => fc.name === "schedule_calendar_event");
+      if (calendarCall?.result?.event_data) {
+        set({ pendingCalendarEvent: calendarCall.result.event_data });
       }
 
       // Reconcile in the background — don't block the user from typing
@@ -655,4 +674,6 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const { canSendMessage } = useMessageLimitStore.getState();
     return canSendMessage();
   },
+
+  clearPendingCalendarEvent: () => set({ pendingCalendarEvent: null }),
 }));

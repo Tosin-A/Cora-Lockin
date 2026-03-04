@@ -1330,6 +1330,7 @@ export interface SubscriptionStatus {
   status: string;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
+  source?: 'stripe' | 'apple';
 }
 
 export async function createCheckoutSession(): Promise<{
@@ -1358,6 +1359,22 @@ export async function cancelSubscription(): Promise<{
   error: string | null;
 }> {
   return apiRequest("/api/v1/subscription/cancel", { method: "POST" });
+}
+
+export async function verifyIAPPurchase(payload: {
+  platform: 'ios' | 'android';
+  productId: string;
+  transactionId: string;
+  receipt?: string;
+  purchaseToken?: string;
+}): Promise<{
+  data: SubscriptionStatus | null;
+  error: string | null;
+}> {
+  return apiRequest<SubscriptionStatus>("/api/v1/subscription/verify-iap", {
+    method: "POST",
+    body: payload,
+  });
 }
 
 // Account
@@ -1444,6 +1461,7 @@ export const coresenseApi = {
   getSubscriptionStatus,
   createPortalSession,
   cancelSubscription,
+  verifyIAPPurchase,
 
   // Account
   deleteAccount,

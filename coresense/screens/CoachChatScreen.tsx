@@ -29,6 +29,7 @@ import { useChatStore } from "../stores/chatStore";
 import { useUserStore } from "../stores/userStore";
 import { useInsightsStore } from "../stores/insightsStore";
 import { useMessageLimitStore } from "../stores/messageLimitStore";
+import { scheduleWithSmartGap } from "../utils/calendarService";
 
 // Route params type for insight context
 type CoachChatRouteParams = {
@@ -63,6 +64,8 @@ export default function CoachChatScreen({ navigation }: any) {
     completeQuickAction,
     pendingReconciliation,
     hasPendingReconciliation,
+    pendingCalendarEvent,
+    clearPendingCalendarEvent,
   } = useChatStore();
 
   const { profile } = useUserStore();
@@ -75,6 +78,8 @@ export default function CoachChatScreen({ navigation }: any) {
   } = useMessageLimitStore();
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [calendarAdding, setCalendarAdding] = useState(false);
+  const [calendarSuccess, setCalendarSuccess] = useState(false);
   const skeletonPulse = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
@@ -92,6 +97,11 @@ export default function CoachChatScreen({ navigation }: any) {
     loadCachedMessages();
     loadUsageStats();
   }, []);
+
+  useEffect(() => {
+    setCalendarSuccess(false);
+    setCalendarAdding(false);
+  }, [pendingCalendarEvent]);
 
   // Generate pre-filled message from insight context
   const initialMessage = useMemo(() => {
@@ -204,6 +214,99 @@ export default function CoachChatScreen({ navigation }: any) {
       );
     }
   }, [completeQuickAction, quickActions, generateInsightFromChat]);
+
+  const handleAddToCalendar = useCallback(async () => {
+    if (!pendingCalendarEvent || calendarAdding) return;
+    setCalendarAdding(true);
+    try {
+      const targetDate = new Date(pendingCalendarEvent.date);
+      const result = await scheduleWithSmartGap(
+        pendingCalendarEvent.title,
+        targetDate,
+        pendingCalendarEvent.duration_minutes || 60,
+        pendingCalendarEvent.preferred_time,
+        pendingCalendarEvent.notes
+      );
+      if (result.success) {
+        setCalendarSuccess(true);
+        setTimeout(() => {
+          clearPendingCalendarEvent();
+        }, 2000);
+      } else {
+        Alert.alert("Calendar Error", result.error || "Could not add event to calendar.");
+      }
+    } catch {
+      Alert.alert("Calendar Error", "Something went wrong. Please try again.");
+    } finally {
+      setCalendarAdding(false);
+    }
+  }, [pendingCalendarEvent, calendarAdding, clearPendingCalendarEvent]);
+
+  const renderCalendarActionCard = () => {
+    if (!pendingCalendarEvent) return null;
+
+    const formattedDate = (() => {
+      try {
+        return new Date(pendingCalendarEvent.date).toLocaleDateString(undefined, {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+        });
+      } catch {
+        return pendingCalendarEvent.date;
+      }
+    })();
+
+    return (
+      <View style={[calendarStyles.card, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+        {calendarSuccess ? (
+          <View style={calendarStyles.successRow}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.success || '#22C55E'} />
+            <Text style={[calendarStyles.successText, { color: colors.textSecondary }]}>
+              Added to your calendar
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={calendarStyles.infoRow}>
+              <Ionicons name="calendar-outline" size={16} color={colors.textTertiary} />
+              <View style={calendarStyles.infoText}>
+                <Text style={[calendarStyles.eventTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {pendingCalendarEvent.title}
+                </Text>
+                <Text style={[calendarStyles.eventDate, { color: colors.textTertiary }]}>
+                  {formattedDate}
+                  {pendingCalendarEvent.preferred_time ? ` · ${pendingCalendarEvent.preferred_time}` : ''}
+                </Text>
+              </View>
+            </View>
+            <View style={calendarStyles.actions}>
+              <TouchableOpacity
+                style={calendarStyles.dismissButton}
+                onPress={clearPendingCalendarEvent}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+              >
+                <Text style={[calendarStyles.dismissText, { color: colors.textTertiary }]}>Dismiss</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[calendarStyles.addButton, { backgroundColor: colors.primary }]}
+                onPress={handleAddToCalendar}
+                disabled={calendarAdding}
+                activeOpacity={0.8}
+              >
+                {calendarAdding ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={calendarStyles.addButtonText}>Add to Calendar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
+    );
+  };
 
   const renderMessage = ({ item, index }: { item: any; index: number }) => {
     const prevMessage = displayMessages[index - 1];
@@ -384,6 +487,9 @@ export default function CoachChatScreen({ navigation }: any) {
           </View>
         )}
 
+        {/* Calendar action card */}
+        {renderCalendarActionCard()}
+
         {/* Chat Input */}
         <View style={styles.inputContainer}>
           <ChatInput
@@ -540,4 +646,67 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
   },
 
+});
+
+const calendarStyles = StyleSheet.create({
+  card: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  infoText: {
+    flex: 1,
+  },
+  eventTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  eventDate: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: Spacing.md,
+  },
+  dismissButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  dismissText: {
+    fontSize: 14,
+  },
+  addButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  successRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  successText: {
+    fontSize: 14,
+  },
 });

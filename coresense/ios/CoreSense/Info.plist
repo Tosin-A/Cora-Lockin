@@ -47,6 +47,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>CoreSense needs calendar access to schedule your commitments and find the best available times.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>CoreSense needs calendar access to schedule your commitments and find the best available times.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>CoreSense needs reminders access to help you stay on track with your goals.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>CoreSense needs reminders access to help you stay on track with your goals.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>CoreSense needs access to your health data to provide personalized coaching insights.</string>
 	<key>NSHealthUpdateUsageDescription</key>
