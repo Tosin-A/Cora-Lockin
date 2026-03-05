@@ -97,13 +97,26 @@ export const purchaseProSubscription = async (): Promise<Purchase | null> => {
       }
     });
 
-    errorListener = purchaseErrorListener((error) => {
+    errorListener = purchaseErrorListener(async (error) => {
       cleanup();
       if (error.code === 'E_USER_CANCELLED') {
         resolve(null);
-      } else {
-        reject(new Error(error.message || 'Purchase failed'));
+        return;
       }
+      // "Item already owned" = user has active subscription, restore it
+      if (error.code === 'E_ALREADY_OWNED' || /already own|already bought/i.test(error.message || '')) {
+        try {
+          const purchases = await getAvailablePurchases({ onlyIncludeActiveItemsIOS: true });
+          const proPurchase = purchases?.find((p) => IAP_SUBSCRIPTION_SKUS.includes(p.productId));
+          if (proPurchase) {
+            resolve(proPurchase);
+            return;
+          }
+        } catch {
+          // Fall through to reject
+        }
+      }
+      reject(new Error(error.message || 'Purchase failed'));
     });
 
     requestPurchase({
@@ -135,6 +148,18 @@ export const getReceiptForVerification = async (): Promise<string | null> => {
 export const getActivePurchases = async () => {
   if (!isIAPAvailable()) return [];
   return getAvailablePurchases({ onlyIncludeActiveItemsIOS: true });
+};
+
+/** Restore existing Pro subscription and return the purchase if found. */
+export const restoreProPurchase = async (): Promise<Purchase | null> => {
+  if (!isIAPAvailable()) return null;
+  try {
+    await initConnection();
+    const purchases = await getAvailablePurchases({ onlyIncludeActiveItemsIOS: true });
+    return purchases?.find((p) => IAP_SUBSCRIPTION_SKUS.includes(p.productId)) ?? null;
+  } catch {
+    return null;
+  }
 };
 
 export const finishIAPTransaction = async (purchase: Purchase): Promise<void> => {

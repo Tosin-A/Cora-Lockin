@@ -24,7 +24,7 @@ import {
   Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -216,9 +216,7 @@ export default function SettingsScreen() {
   const { user } = useAuthStore();
   const { preferences, fetchPreferences, updatePreferences, profile } = useUserStore();
   const isPro = useSubscriptionStore((s) => s.isPro);
-  const checkoutLoading = useSubscriptionStore((s) => s.checkoutLoading);
-  const startCheckout = useSubscriptionStore((s) => s.startCheckout);
-  const openCustomerPortal = useSubscriptionStore((s) => s.openCustomerPortal);
+  const loadSubscriptionStatus = useSubscriptionStore((s) => s.loadSubscriptionStatus);
 
   // ============================================================================
   // STATE (Original names preserved)
@@ -312,6 +310,13 @@ export default function SettingsScreen() {
   useEffect(() => {
     setLocalPrefs(preferences || DEFAULT_PREFERENCES);
   }, [preferences]);
+
+  // Refresh subscription status when Settings is focused (e.g. after returning from purchase)
+  useFocusEffect(
+    useCallback(() => {
+      loadSubscriptionStatus();
+    }, [loadSubscriptionStatus]),
+  );
 
   // HealthKit enabled state is now managed by healthStore - no need to check permissions on mount
   // The healthStore persists the enabled state and syncs data when enabled
@@ -629,56 +634,6 @@ export default function SettingsScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </View>
           </TouchableOpacity>
-
-          {/* ================================================================ */}
-          {/* SECTION: Pro Subscription */}
-          {/* ================================================================ */}
-          <Card style={styles.section}>
-            <SectionHeader icon="star-outline" title="Pro" iconColor="#007AFF" colors={colors} />
-            {isPro ? (
-              <>
-                <View style={styles.proSubscriptionRow}>
-                  <View style={[styles.proPill, { backgroundColor: '#007AFF' }]}>
-                    <Text style={styles.proPillText}>Active</Text>
-                  </View>
-                  <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary }]}>
-                    10 messages/day, 30/week
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.proManageButton, { backgroundColor: colors.surfaceMedium }]}
-                  onPress={openCustomerPortal}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="settings-outline" size={20} color={colors.primary} />
-                  <Text style={[styles.proManageButtonText, { color: colors.textPrimary }]}>
-                    Manage subscription
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary, marginBottom: Spacing.md }]}>
-                  Get 10 messages per day and 30 per week. Unlock unlimited coaching potential.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.proUpgradeButton, { backgroundColor: '#007AFF' }]}
-                  onPress={startCheckout}
-                  disabled={checkoutLoading}
-                  activeOpacity={0.7}
-                >
-                  {checkoutLoading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.proUpgradeButtonText}>
-                      Upgrade to Pro
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
-          </Card>
 
           {/* ================================================================ */}
           {/* SECTION 2: Appearance */}
@@ -1705,6 +1660,17 @@ const styles = StyleSheet.create({
     ...Typography.button,
     color: "#FFFFFF",
     fontWeight: "600",
+  },
+  proRestoreButton: {
+    paddingVertical: 12,
+    borderRadius: BorderRadius.medium,
+    alignItems: "center",
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+  },
+  proRestoreButtonText: {
+    ...Typography.body,
+    fontWeight: "500",
   },
 
   // Modal Styles (Preserved)

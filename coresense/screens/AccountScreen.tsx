@@ -29,6 +29,7 @@ import { Card } from '../components/Card';
 import { PurpleButton } from '../components/PurpleButton';
 import { useAuthStore } from '../stores/authStore';
 import { useUserStore } from '../stores/userStore';
+import { useSubscriptionStore } from '../stores/subscriptionStore';
 import { getUserProfile, updateUserProfile } from '../utils/api';
 import { User } from '../types';
 
@@ -44,6 +45,13 @@ export default function AccountScreen() {
   const { colors } = useTheme();
   const { user, signOut, deleteAccount, deletingAccount } = useAuthStore();
   const { profile: storeProfile, fetchProfile } = useUserStore();
+  const isPro = useSubscriptionStore((s) => s.isPro);
+  const checkoutLoading = useSubscriptionStore((s) => s.checkoutLoading);
+  const restoreLoading = useSubscriptionStore((s) => s.restoreLoading);
+  const startCheckout = useSubscriptionStore((s) => s.startCheckout);
+  const restorePurchases = useSubscriptionStore((s) => s.restorePurchases);
+  const openCustomerPortal = useSubscriptionStore((s) => s.openCustomerPortal);
+  const loadSubscriptionStatus = useSubscriptionStore((s) => s.loadSubscriptionStatus);
 
   // Profile state
   const [profile, setProfile] = useState<User | null>(null);
@@ -94,7 +102,8 @@ export default function AccountScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-    }, [fetchData])
+      loadSubscriptionStatus();
+    }, [fetchData, loadSubscriptionStatus])
   );
 
   // Check for changes
@@ -264,18 +273,25 @@ export default function AccountScreen() {
 
         {/* Profile Avatar */}
         <View style={styles.avatarSection}>
-          {profile?.avatar_url || user?.avatar_url ? (
-            <Image
-              source={{ uri: profile?.avatar_url || user?.avatar_url || '' }}
-              style={styles.avatarImage}
-            />
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.avatarText, { color: '#FFFFFF' }]}>
-                {username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
-              </Text>
-            </View>
-          )}
+          <View style={styles.avatarRow}>
+            {profile?.avatar_url || user?.avatar_url ? (
+              <Image
+                source={{ uri: profile?.avatar_url || user?.avatar_url || '' }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+                <Text style={[styles.avatarText, { color: '#FFFFFF' }]}>
+                  {username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+                </Text>
+              </View>
+            )}
+            {isPro && (
+              <View style={[styles.proPill, { backgroundColor: '#007AFF', marginLeft: Spacing.sm }]}>
+                <Text style={styles.proPillText}>Pro</Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.avatarEmail, { color: colors.textSecondary }]}>{getDisplayEmail(user?.email)}</Text>
         </View>
 
@@ -336,6 +352,73 @@ export default function AccountScreen() {
                 : 'Unknown'}
             </Text>
           </View>
+        </Card>
+
+        {/* Pro Subscription */}
+        <Card style={styles.section}>
+          <View style={styles.proSectionHeader}>
+            <View style={[styles.proSectionIcon, { backgroundColor: 'rgba(0, 122, 255, 0.15)' }]}>
+              <Ionicons name="diamond-outline" size={18} color="#007AFF" />
+            </View>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Pro</Text>
+          </View>
+          {isPro ? (
+            <>
+              <View style={styles.proSubscriptionRow}>
+                <View style={[styles.proPill, { backgroundColor: '#007AFF' }]}>
+                  <Text style={styles.proPillText}>Active</Text>
+                </View>
+                <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary }]}>
+                  10 messages/day, 30/week
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.proManageButton, { backgroundColor: colors.surfaceMedium }]}
+                onPress={openCustomerPortal}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="settings-outline" size={20} color={colors.primary} />
+                <Text style={[styles.proManageButtonText, { color: colors.textPrimary }]}>
+                  Manage subscription
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary, marginBottom: Spacing.md }]}>
+                Get 10 messages per day and 30 per week. Unlock unlimited coaching potential.
+              </Text>
+              <TouchableOpacity
+                style={[styles.proUpgradeButton, { backgroundColor: '#007AFF' }]}
+                onPress={startCheckout}
+                disabled={checkoutLoading}
+                activeOpacity={0.7}
+              >
+                {checkoutLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.proUpgradeButtonText}>
+                    Upgrade to Pro
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.proRestoreButton, { borderColor: colors.border }]}
+                onPress={restorePurchases}
+                disabled={restoreLoading}
+                activeOpacity={0.7}
+              >
+                {restoreLoading ? (
+                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                ) : (
+                  <Text style={[styles.proRestoreButtonText, { color: colors.textSecondary }]}>
+                    Restore Purchases
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
         </Card>
 
         {/* Actions */}
@@ -488,6 +571,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.xl,
   },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatar: {
     width: 80,
     height: 80,
@@ -632,6 +720,76 @@ const styles = StyleSheet.create({
   },
   actionTextDanger: {
     color: Colors.error,
+  },
+  // Pro section
+  proSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  proSectionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proSubscriptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  proSubscriptionDesc: {
+    ...Typography.bodySmall,
+    lineHeight: 20,
+  },
+  proPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  proPillText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700' as const,
+    letterSpacing: 0.5,
+  },
+  proManageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.medium,
+    marginTop: Spacing.sm,
+  },
+  proManageButtonText: {
+    ...Typography.body,
+    fontWeight: '500',
+    flex: 1,
+  },
+  proUpgradeButton: {
+    paddingVertical: 14,
+    borderRadius: BorderRadius.medium,
+    alignItems: 'center',
+  },
+  proUpgradeButtonText: {
+    ...Typography.button,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  proRestoreButton: {
+    paddingVertical: 12,
+    borderRadius: BorderRadius.medium,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+  },
+  proRestoreButtonText: {
+    ...Typography.body,
+    fontWeight: '500',
   },
   // Save button
   saveButton: {

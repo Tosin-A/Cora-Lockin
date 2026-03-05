@@ -13,6 +13,7 @@ import {
   isIAPAvailable,
   initIAP,
   purchaseProSubscription,
+  restoreProPurchase,
   getReceiptForVerification,
   finishIAPTransaction,
   showManageSubscriptionsIOS,
@@ -26,10 +27,12 @@ interface SubscriptionState {
   source: 'stripe' | 'apple' | null;
   loading: boolean;
   checkoutLoading: boolean;
+  restoreLoading: boolean;
   error: string | null;
 
   loadSubscriptionStatus: () => Promise<void>;
   startCheckout: () => Promise<void>;
+  restorePurchases: () => Promise<void>;
   openCustomerPortal: () => Promise<void>;
   cancelSubscription: () => Promise<void>;
   handleSubscriptionSuccess: () => Promise<void>;
@@ -43,6 +46,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   source: null,
   loading: false,
   checkoutLoading: false,
+  restoreLoading: false,
   error: null,
 
   loadSubscriptionStatus: async () => {
@@ -114,12 +118,76 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         });
         await finishIAPTransaction(purchase);
         useMessageLimitStore.getState().loadUsageStats();
+        // Refresh from backend to ensure UI stays in sync
+        await get().loadSubscriptionStatus();
       }
     } catch (e: any) {
       set({ error: e.message || 'Failed to start checkout', checkoutLoading: false });
-      Alert.alert('Error', e.message || 'Could not complete purchase. Please try again.');
+      if (e.message === 'IAP_PRODUCT_NOT_FOUND') {
+        Alert.alert(
+          'Pro Subscription Not Found',
+          'The Pro product could not be loaded from the App Store.\n\n' +
+            'Checklist:\n' +
+            '• Product "com.coresense.app.pro_monthly" created in App Store Connect → Subscriptions\n' +
+            '• Product status is "Ready to Submit"\n' +
+            '• Paid Apps Agreement signed (App Store Connect → Agreements)\n' +
+            '• Banking & tax info complete\n' +
+            '• In-App Purchase capability added in Xcode\n' +
+            '• Testing on a physical device (not simulator)\n' +
+            '• Using a Sandbox tester account',
+          [{ text: 'OK' }],
+        );
+      } else {
+        Alert.alert('Error', e.message || 'Could not complete purchase. Please try again.');
+      }
     } finally {
       set({ checkoutLoading: false });
+    }
+  },
+
+  restorePurchases: async () => {
+    if (Platform.OS !== 'ios' || !isIAPAvailable()) return;
+    set({ restoreLoading: true, error: null });
+    try {
+      const purchase = await restoreProPurchase();
+      if (!purchase) {
+        Alert.alert('No Purchases Found', 'No active Pro subscription found on this device.');
+        set({ restoreLoading: false });
+        return;
+      }
+      const receipt = await getReceiptForVerification();
+      if (!receipt) {
+        Alert.alert('Verification Issue', 'Could not retrieve receipt. Please try again.');
+        set({ restoreLoading: false });
+        return;
+      }
+      const { data, error } = await coresenseApi.verifyIAPPurchase({
+        platform: 'ios',
+        productId: purchase.productId,
+        transactionId: purchase.transactionId ?? '',
+        receipt,
+      });
+      if (error) {
+        Alert.alert('Error', error);
+        set({ restoreLoading: false });
+        return;
+      }
+      if (data) {
+        set({
+          isPro: data.is_pro,
+          status: data.status,
+          currentPeriodEnd: data.current_period_end,
+          cancelAtPeriodEnd: data.cancel_at_period_end,
+          source: 'apple',
+        });
+        useMessageLimitStore.getState().loadUsageStats();
+        await get().loadSubscriptionStatus();
+        Alert.alert('Restored', 'Your Pro subscription has been restored.');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not restore purchases.');
+    } finally {
+      set({ restoreLoading: false });
     }
   },
 
