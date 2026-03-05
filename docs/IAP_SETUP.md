@@ -41,6 +41,18 @@ The `react-native-iap` plugin should add this. If not:
 
 2. Set `APPLE_SHARED_SECRET` in your production environment (Railway, etc.)
 
+## EAS Submit (App Store)
+
+Before running `eas submit --platform ios`, update `coresense/eas.json` submit.production.ios:
+
+| Field | Where to get it |
+|-------|-----------------|
+| `appleId` | Your Apple Developer account email |
+| `ascAppId` | App Store Connect → Your App → App Information → Apple ID (numeric) |
+| `appleTeamId` | `6C383NJ99X` (matches app.json; change if using a different team) |
+
+Privacy: https://coresense.online/privacy | Terms: https://coresense.online/terms
+
 ## Testing
 
 - Use **Sandbox** test accounts (App Store Connect → Users and Access → Sandbox)
