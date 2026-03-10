@@ -17,6 +17,7 @@ import {
   getReceiptForVerification,
   finishIAPTransaction,
   showManageSubscriptionsIOS,
+  fetchSubscriptionProducts,
 } from '../utils/iap';
 
 interface SubscriptionState {
@@ -29,8 +30,10 @@ interface SubscriptionState {
   checkoutLoading: boolean;
   restoreLoading: boolean;
   error: string | null;
+  priceString: string | null;
 
   loadSubscriptionStatus: () => Promise<void>;
+  loadProductPrice: () => Promise<void>;
   startCheckout: () => Promise<void>;
   restorePurchases: () => Promise<void>;
   openCustomerPortal: () => Promise<void>;
@@ -48,6 +51,20 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   checkoutLoading: false,
   restoreLoading: false,
   error: null,
+  priceString: null,
+
+  loadProductPrice: async () => {
+    if (!isIAPAvailable()) return;
+    try {
+      await initIAP();
+      const products = await fetchSubscriptionProducts();
+      if (products && products.length > 0) {
+        set({ priceString: products[0].localizedPrice });
+      }
+    } catch (e) {
+      console.warn('[SubscriptionStore] Failed to load product price:', e);
+    }
+  },
 
   loadSubscriptionStatus: async () => {
     set({ loading: true, error: null });

@@ -2,7 +2,7 @@
   "expo": {
     "name": "CoreSense",
     "slug": "coresense",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "splash": {
@@ -40,7 +40,11 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font",
+      ["expo-font", {
+        "fonts": [
+          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf"
+        ]
+      }],
       [
         "expo-calendar",
         {

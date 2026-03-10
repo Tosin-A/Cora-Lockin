@@ -18,6 +18,7 @@ import {
   Platform,
   Modal,
   Image,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -52,6 +53,11 @@ export default function AccountScreen() {
   const restorePurchases = useSubscriptionStore((s) => s.restorePurchases);
   const openCustomerPortal = useSubscriptionStore((s) => s.openCustomerPortal);
   const loadSubscriptionStatus = useSubscriptionStore((s) => s.loadSubscriptionStatus);
+  const loadProductPrice = useSubscriptionStore((s) => s.loadProductPrice);
+  const priceString = useSubscriptionStore((s) => s.priceString);
+
+  const PRIVACY_POLICY_URL = 'https://coresense.online/privacy';
+  const TERMS_OF_USE_URL = 'https://coresense.online/terms';
 
   // Profile state
   const [profile, setProfile] = useState<User | null>(null);
@@ -103,7 +109,8 @@ export default function AccountScreen() {
     useCallback(() => {
       fetchData();
       loadSubscriptionStatus();
-    }, [fetchData, loadSubscriptionStatus])
+      loadProductPrice();
+    }, [fetchData, loadSubscriptionStatus, loadProductPrice])
   );
 
   // Check for changes
@@ -386,8 +393,20 @@ export default function AccountScreen() {
             </>
           ) : (
             <>
-              <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary, marginBottom: Spacing.md }]}>
+              {priceString && (
+                <Text style={[styles.proPriceText, { color: colors.textPrimary }]}>
+                  {priceString}/month
+                </Text>
+              )}
+              <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary, marginBottom: Spacing.sm }]}>
                 Get 10 messages per day and 30 per week. Unlock unlimited coaching potential.
+              </Text>
+              <Text style={[styles.proSubscriptionTerms, { color: colors.textTertiary }]}>
+                Auto-renewable monthly subscription.{' '}
+                {priceString ? `${priceString} billed monthly. ` : ''}
+                Payment will be charged to your Apple ID account at confirmation of purchase.
+                Subscription automatically renews unless canceled at least 24 hours before the end of the current period.
+                You can manage or cancel your subscription in your App Store account settings.
               </Text>
               <TouchableOpacity
                 style={[styles.proUpgradeButton, { backgroundColor: '#007AFF' }]}
@@ -399,10 +418,29 @@ export default function AccountScreen() {
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <Text style={styles.proUpgradeButtonText}>
-                    Upgrade to Pro
+                    {priceString ? `Subscribe for ${priceString}/month` : 'Upgrade to Pro'}
                   </Text>
                 )}
               </TouchableOpacity>
+              <View style={styles.proLegalLinks}>
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(TERMS_OF_USE_URL)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.proLegalLinkText, { color: colors.primary }]}>
+                    Terms of Use (EULA)
+                  </Text>
+                </TouchableOpacity>
+                <Text style={[styles.proLegalSeparator, { color: colors.textTertiary }]}>|</Text>
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.proLegalLinkText, { color: colors.primary }]}>
+                    Privacy Policy
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 style={[styles.proRestoreButton, { borderColor: colors.border }]}
                 onPress={restorePurchases}
@@ -741,9 +779,33 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.sm,
   },
+  proPriceText: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: Spacing.xs,
+  },
   proSubscriptionDesc: {
     ...Typography.bodySmall,
     lineHeight: 20,
+  },
+  proSubscriptionTerms: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginBottom: Spacing.md,
+  },
+  proLegalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  proLegalLinkText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  proLegalSeparator: {
+    fontSize: 13,
   },
   proPill: {
     paddingHorizontal: 8,
