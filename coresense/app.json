@@ -31,7 +31,7 @@
         "com.apple.developer.healthkit.access": [],
         "aps-environment": "production"
       },
-      "buildNumber": "2"
+      "buildNumber": "3"
     },
     "android": {
       "adaptiveIcon": {
