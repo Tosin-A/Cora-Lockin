@@ -105,7 +105,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         set({ checkoutLoading: false });
         return;
       }
-      const receipt = await getReceiptForVerification();
+      // Prefer the receipt from the purchase transaction (fresh), fall back to device receipt
+      const receipt = purchase.transactionReceipt || await getReceiptForVerification();
       if (!receipt) {
         set({ checkoutLoading: false });
         Alert.alert(
@@ -172,7 +173,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         set({ restoreLoading: false });
         return;
       }
-      const receipt = await getReceiptForVerification();
+      const receipt = purchase.transactionReceipt || await getReceiptForVerification();
       if (!receipt) {
         Alert.alert('Verification Issue', 'Could not retrieve receipt. Please try again.');
         set({ restoreLoading: false });
