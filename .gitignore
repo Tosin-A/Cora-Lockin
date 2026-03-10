@@ -42,3 +42,4 @@ npm-debug.log*
 *.pem
 *.key
 credentials.json
+client_secret_*.json
