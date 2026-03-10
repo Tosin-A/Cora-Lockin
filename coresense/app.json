@@ -22,13 +22,16 @@
         "NSCalendarsFullAccessUsageDescription": "CoreSense needs calendar access to schedule your commitments and find the best available times.",
         "NSRemindersUsageDescription": "CoreSense needs reminders access to help you stay on track with your goals.",
         "NSRemindersFullAccessUsageDescription": "CoreSense needs reminders access to help you stay on track with your goals.",
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       },
       "entitlements": {
         "com.apple.developer.healthkit": true,
         "com.apple.developer.healthkit.access": [],
         "aps-environment": "production"
-      }
+      },
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
@@ -40,11 +43,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      ["expo-font", {
-        "fonts": [
-          "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf"
-        ]
-      }],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf"
+          ]
+        }
+      ],
       [
         "expo-calendar",
         {

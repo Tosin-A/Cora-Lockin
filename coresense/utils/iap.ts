@@ -78,7 +78,12 @@ export const purchaseProSubscription = async (): Promise<Purchase | null> => {
     throw new Error('IAP_PRODUCT_NOT_FOUND');
   }
 
+  console.log('[IAP] Products fetched:', products.map((p) => ({ id: p.productId, price: p.localizedPrice })));
+  console.log('[IAP] Starting purchase for', IAP_PRODUCT_IDS.PRO_MONTHLY);
+
   return new Promise((resolve, reject) => {
+    let settled = false;
+
     const cleanup = () => {
       if (purchaseListener) {
         purchaseListener.remove();
@@ -90,15 +95,35 @@ export const purchaseProSubscription = async (): Promise<Purchase | null> => {
       }
     };
 
-    purchaseListener = purchaseUpdatedListener((purchase) => {
-      if (IAP_SUBSCRIPTION_SKUS.includes(purchase.productId)) {
+    // Timeout after 2 minutes to prevent infinite hang
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
         cleanup();
-        resolve(purchase);
+        console.warn('[IAP] Purchase timed out after 120s');
+        reject(new Error('Purchase timed out. Please try again.'));
+      }
+    }, 120000);
+
+    purchaseListener = purchaseUpdatedListener((purchase) => {
+      console.log('[IAP] purchaseUpdatedListener fired:', purchase.productId, purchase.transactionId);
+      if (IAP_SUBSCRIPTION_SKUS.includes(purchase.productId)) {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          cleanup();
+          resolve(purchase);
+        }
       }
     });
 
     errorListener = purchaseErrorListener(async (error) => {
+      console.log('[IAP] purchaseErrorListener fired:', error.code, error.message);
       cleanup();
+      clearTimeout(timeout);
+      if (settled) return;
+      settled = true;
+
       if (error.code === 'E_USER_CANCELLED') {
         resolve(null);
         return;
@@ -126,8 +151,13 @@ export const purchaseProSubscription = async (): Promise<Purchase | null> => {
       },
       type: 'subs',
     }).catch((e) => {
-      cleanup();
-      reject(e);
+      console.error('[IAP] requestPurchase error:', e);
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeout);
+        cleanup();
+        reject(e);
+      }
     });
   });
 };
