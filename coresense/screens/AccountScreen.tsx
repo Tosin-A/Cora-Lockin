@@ -393,23 +393,22 @@ export default function AccountScreen() {
             </>
           ) : (
             <>
-              {priceString && (
-                <Text style={[styles.proPriceText, { color: colors.textPrimary }]}>
-                  {priceString}/month
+              <View style={styles.proPriceRow}>
+                <Text style={[styles.proBilledAmount, { color: colors.textPrimary }]}>
+                  {priceString || '—'}
                 </Text>
-              )}
-              <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary, marginBottom: Spacing.sm }]}>
-                Get 10 messages per day and 30 per week. Unlock unlimited coaching potential.
-              </Text>
-              <Text style={[styles.proSubscriptionTerms, { color: colors.textTertiary }]}>
-                Auto-renewable monthly subscription.{' '}
-                {priceString ? `${priceString} billed monthly. ` : ''}
-                Payment will be charged to your Apple ID account at confirmation of purchase.
-                Subscription automatically renews unless canceled at least 24 hours before the end of the current period.
-                You can manage or cancel your subscription in your App Store account settings.
-              </Text>
+                <Text style={[styles.proPeriodLabel, { color: colors.textTertiary }]}>
+                  / month
+                </Text>
+              </View>
+              <View style={[styles.proFeatureRow, { backgroundColor: colors.surfaceMedium }]}>
+                <Ionicons name="chatbubble-outline" size={15} color={colors.textTertiary} />
+                <Text style={[styles.proFeatureText, { color: colors.textSecondary }]}>
+                  10 messages per day, 30 per week
+                </Text>
+              </View>
               <TouchableOpacity
-                style={[styles.proUpgradeButton, { backgroundColor: '#007AFF' }]}
+                style={[styles.proUpgradeButton, { backgroundColor: colors.primary }]}
                 onPress={startCheckout}
                 disabled={checkoutLoading}
                 activeOpacity={0.7}
@@ -417,40 +416,44 @@ export default function AccountScreen() {
                 {checkoutLoading ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.proUpgradeButtonText}>
-                    {priceString ? `Subscribe for ${priceString}/month` : 'Upgrade to Pro'}
-                  </Text>
+                  <Text style={styles.proUpgradeButtonText}>Subscribe</Text>
                 )}
               </TouchableOpacity>
+              <Text style={[styles.proSubscriptionTerms, { color: colors.textTertiary }]}>
+                {priceString ? `${priceString} billed monthly. ` : ''}
+                Payment will be charged to your Apple ID account at confirmation of purchase.
+                Subscription automatically renews unless canceled at least 24 hours before the end of the current period.
+                You can manage or cancel in App Store settings.
+              </Text>
               <View style={styles.proLegalLinks}>
                 <TouchableOpacity
                   onPress={() => Linking.openURL(TERMS_OF_USE_URL)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Text style={[styles.proLegalLinkText, { color: colors.primary }]}>
+                  <Text style={[styles.proLegalLinkText, { color: colors.textTertiary }]}>
                     Terms of Use (EULA)
                   </Text>
                 </TouchableOpacity>
-                <Text style={[styles.proLegalSeparator, { color: colors.textTertiary }]}>|</Text>
+                <Text style={[styles.proLegalSeparator, { color: colors.textTertiary }]}>·</Text>
                 <TouchableOpacity
                   onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Text style={[styles.proLegalLinkText, { color: colors.primary }]}>
+                  <Text style={[styles.proLegalLinkText, { color: colors.textTertiary }]}>
                     Privacy Policy
                   </Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                style={[styles.proRestoreButton, { borderColor: colors.border }]}
+                style={styles.proRestoreButton}
                 onPress={restorePurchases}
                 disabled={restoreLoading}
                 activeOpacity={0.7}
               >
                 {restoreLoading ? (
-                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                  <ActivityIndicator size="small" color={colors.textTertiary} />
                 ) : (
-                  <Text style={[styles.proRestoreButtonText, { color: colors.textSecondary }]}>
+                  <Text style={[styles.proRestoreButtonText, { color: colors.textTertiary }]}>
                     Restore Purchases
                   </Text>
                 )}
@@ -779,10 +782,34 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.sm,
   },
-  proPriceText: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: Spacing.xs,
+  proPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: Spacing.md,
+  },
+  proBilledAmount: {
+    fontSize: 26,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+  },
+  proPeriodLabel: {
+    fontSize: 15,
+    fontWeight: '400',
+    marginLeft: 3,
+  },
+  proFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 10,
+    paddingHorizontal: Spacing.md,
+    borderRadius: 8,
+    marginBottom: Spacing.lg,
+  },
+  proFeatureText: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 18,
   },
   proSubscriptionDesc: {
     ...Typography.bodySmall,
@@ -791,21 +818,21 @@ const styles = StyleSheet.create({
   proSubscriptionTerms: {
     fontSize: 11,
     lineHeight: 16,
-    marginBottom: Spacing.md,
+    marginTop: Spacing.md,
   },
   proLegalLinks: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
     gap: Spacing.sm,
   },
   proLegalLinkText: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '400',
   },
   proLegalSeparator: {
-    fontSize: 13,
+    fontSize: 12,
   },
   proPill: {
     paddingHorizontal: 8,
@@ -834,24 +861,22 @@ const styles = StyleSheet.create({
   },
   proUpgradeButton: {
     paddingVertical: 14,
-    borderRadius: BorderRadius.medium,
+    borderRadius: 10,
     alignItems: 'center',
   },
   proUpgradeButtonText: {
-    ...Typography.button,
+    fontSize: 15,
     color: '#FFFFFF',
     fontWeight: '600',
   },
   proRestoreButton: {
-    paddingVertical: 12,
-    borderRadius: BorderRadius.medium,
+    paddingVertical: 10,
     alignItems: 'center',
-    marginTop: Spacing.sm,
-    borderWidth: 1,
+    marginTop: Spacing.xs,
   },
   proRestoreButtonText: {
-    ...Typography.body,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '400',
   },
   // Save button
   saveButton: {

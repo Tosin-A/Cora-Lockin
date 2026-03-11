@@ -59,7 +59,12 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       await initIAP();
       const products = await fetchSubscriptionProducts();
       if (products && products.length > 0) {
-        set({ priceString: products[0].localizedPrice });
+        const product = products[0];
+        const price = product.displayPrice || product.localizedPrice || null;
+        console.log('[SubscriptionStore] Product price loaded:', { displayPrice: product.displayPrice, localizedPrice: product.localizedPrice, resolved: price });
+        set({ priceString: price });
+      } else {
+        console.warn('[SubscriptionStore] No subscription products returned');
       }
     } catch (e) {
       console.warn('[SubscriptionStore] Failed to load product price:', e);
