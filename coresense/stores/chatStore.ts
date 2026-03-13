@@ -15,6 +15,7 @@ import { coresenseApi } from "../utils/coresenseApi";
 import { useAuthStore } from "./authStore";
 import { useMessageLimitStore } from "./messageLimitStore";
 import { useTodosStore } from "./todosStore";
+import { captureEvent } from "../utils/analytics";
 
 export interface ChatMessage {
   // DB-owned fields (set after reconciliation)
@@ -250,6 +251,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       // Release sending lock immediately so the user can type the next message
       // while reconciliation happens in the background
       set({ typing: false, sending: false });
+
+      captureEvent('chat_message_sent', { is_quick_action: isQuickAction });
 
       console.log(
         "Message sent, waiting for DB write and /history reconciliation..."

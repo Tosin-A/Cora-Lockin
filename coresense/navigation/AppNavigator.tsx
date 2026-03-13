@@ -4,11 +4,12 @@
  * Includes badge support for new insights
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TouchableOpacity, View, StyleSheet } from 'react-native';
+import { usePostHog } from 'posthog-react-native';
 import { useAuthStore } from '../stores/authStore';
 import { useInsightsStore } from '../stores/insightsStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -187,6 +188,19 @@ export default function AppNavigator() {
   const { isAuthenticated, isLoading, checkAuth, pendingPasswordReset } = useAuthStore();
   const navigationRef = useRef<NavigationContainerRef<Record<string, undefined>>>(null);
   const prevIsAuthenticatedRef = useRef<boolean | null>(null);
+  const posthog = usePostHog();
+  const routeNameRef = useRef<string | undefined>(undefined);
+
+  const onNavigationStateChange = useCallback(() => {
+    const currentRoute = navigationRef.current?.getCurrentRoute();
+    const currentRouteName = currentRoute?.name;
+    const previousRouteName = routeNameRef.current;
+
+    if (currentRouteName && currentRouteName !== previousRouteName) {
+      posthog?.screen(currentRouteName);
+    }
+    routeNameRef.current = currentRouteName;
+  }, [posthog]);
 
   useEffect(() => {
     let hasHandledInitialSession = false;
@@ -492,12 +506,22 @@ export default function AppNavigator() {
       });
       
       if (isAuthenticated) {
+        // Identify user in PostHog
+        const { user } = useAuthStore.getState();
+        if (user && posthog) {
+          posthog.identify(user.id, {
+            email: user.email,
+            name: user.full_name,
+          });
+          posthog.capture('user_signed_in', { user_id: user.id });
+        }
+
         const { isLoading } = useAuthStore.getState();
         if (isLoading) {
           console.log('[AppNavigator] Clearing loading state after authentication');
           useAuthStore.setState({ isLoading: false });
         }
-        
+
         // Initialize HealthKit when user becomes authenticated
         console.log('[AppNavigator] Initializing HealthKit...');
         initializeHealthKit()
@@ -524,10 +548,13 @@ export default function AppNavigator() {
           .catch((error) => {
             console.error('[AppNavigator] Push notification registration failed:', error);
           });
+      } else {
+        // Reset PostHog on sign-out
+        posthog?.reset();
       }
     }
     prevIsAuthenticatedRef.current = isAuthenticated;
-  }, [isAuthenticated]);
+  }, [isAuthenticated, posthog]);
 
   // Set navigation ref for notification deep linking
   useEffect(() => {
@@ -546,10 +573,12 @@ export default function AppNavigator() {
       ref={navigationRef}
       key={isAuthenticated ? 'authenticated' : 'unauthenticated'}
       onReady={() => {
+        routeNameRef.current = navigationRef.current?.getCurrentRoute()?.name;
         if (navigationRef.current && isAuthenticated) {
           setNotificationNavigationRef(navigationRef.current);
         }
       }}
+      onStateChange={onNavigationStateChange}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (

@@ -19,6 +19,7 @@ import {
   showManageSubscriptionsIOS,
   fetchSubscriptionProducts,
 } from '../utils/iap';
+import { captureEvent } from '../utils/analytics';
 
 interface SubscriptionState {
   isPro: boolean;
@@ -140,6 +141,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           source: 'apple',
         });
         await finishIAPTransaction(purchase);
+        captureEvent('subscription_purchased', { product_id: purchase.productId });
         useMessageLimitStore.getState().loadUsageStats();
         // Refresh from backend to ensure UI stays in sync
         await get().loadSubscriptionStatus();
@@ -203,6 +205,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           cancelAtPeriodEnd: data.cancel_at_period_end,
           source: 'apple',
         });
+        captureEvent('subscription_restored', { product_id: purchase.productId });
         useMessageLimitStore.getState().loadUsageStats();
         await get().loadSubscriptionStatus();
         Alert.alert('Restored', 'Your Pro subscription has been restored.');
@@ -249,6 +252,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   },
 
   handleSubscriptionSuccess: async () => {
+    captureEvent('subscription_activated');
     await get().loadSubscriptionStatus();
     useMessageLimitStore.getState().loadUsageStats();
   },
