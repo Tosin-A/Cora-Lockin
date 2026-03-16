@@ -101,16 +101,22 @@ export default function CoachChatScreen({ navigation }: any) {
   useEffect(() => {
     loadCachedMessages();
     loadUsageStats();
-    // Load coach personalities
+    // Load coach personalities + saved selection
     (async () => {
-      const { data } = await coresenseApi.getCoachPersonalities();
-      if (data?.personalities) {
-        setPersonalities(data.personalities);
-        // Load current selection from preferences
-        const { data: prefs } = await coresenseApi.getPreferences();
-        const currentId = (prefs as any)?.coachPersonality || "cora";
-        const current = data.personalities.find((p) => p.id === currentId) || data.personalities[0];
-        setSelectedPersonality(current);
+      try {
+        const [personalitiesRes, prefsRes] = await Promise.all([
+          coresenseApi.getCoachPersonalities(),
+          coresenseApi.getPreferences(),
+        ]);
+        const list = personalitiesRes.data?.personalities;
+        if (list?.length) {
+          setPersonalities(list);
+          const savedId = (prefsRes.data as any)?.coachPersonality || "cora";
+          const match = list.find((p) => p.id === savedId) || list[0];
+          setSelectedPersonality(match);
+        }
+      } catch (e) {
+        console.error("Failed to load coach personalities:", e);
       }
     })();
   }, []);
