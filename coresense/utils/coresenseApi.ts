@@ -153,6 +153,7 @@ export interface UserPreferences {
   accountabilityLevel: number;
   goals: string[];
   healthkitEnabled: boolean;
+  coachPersonality?: string;
 }
 
 export interface Streak {
@@ -647,14 +648,16 @@ export async function sendChatMessage(
     context_used: string[];
     variation_applied: boolean;
     response_type: string;
+    conversation_id?: string;
+    response_id?: string;
     thread_id?: string;
-    run_id?: string; // OpenAI run ID for delta tracking (Phase 4)
+    run_id?: string;
     function_calls: any[];
     usage_stats?: any;
     saved_ids?: {
       user_message?: string;
       coach_message_0?: string;
-      assistant_temp_ids?: string[]; // Temp IDs for assistant messages (Phase 4)
+      assistant_temp_ids?: string[];
     };
     client_temp_id?: string;
   } | null;
@@ -1475,6 +1478,30 @@ export async function verifyIAPPurchase(payload: {
   });
 }
 
+// Coach Personalities
+export interface CoachPersonality {
+  id: string;
+  name: string;
+  description: string;
+  sample: string;
+}
+
+export async function getCoachPersonalities(): Promise<{
+  data: { personalities: CoachPersonality[] } | null;
+  error: string | null;
+}> {
+  return apiRequest("/api/v1/coach/personalities");
+}
+
+export async function setCoachPersonality(
+  personalityId: string,
+): Promise<{ data: { success: boolean; personality_id: string } | null; error: string | null }> {
+  return apiRequest("/api/v1/coach/personality", {
+    method: "PUT",
+    body: { personality_id: personalityId },
+  });
+}
+
 // Account
 export async function deleteAccount(): Promise<{
   data: { success: boolean } | null;
@@ -1507,6 +1534,8 @@ export const coresenseApi = {
   getCoachMessages,
   sendChatMessage,
   getChatHistory,
+  getCoachPersonalities,
+  setCoachPersonality,
 
   // Profile
   getProfile,

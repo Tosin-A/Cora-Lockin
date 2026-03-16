@@ -32,6 +32,8 @@ export interface UserPreferences {
   push_notifications?: boolean;
   task_reminders?: boolean;
   weekly_reports?: boolean;
+  // Coach personality
+  coach_personality?: string;
   created_at?: string;
   updated_at?: string;
 }

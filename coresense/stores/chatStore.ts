@@ -33,7 +33,8 @@ export interface ChatMessage {
 
   // Assistant message reconciliation (Phase 4)
   assistant_temp_id?: string; // Temp ID for new assistant messages
-  run_id?: string; // OpenAI run ID for delta tracking
+  response_id?: string; // Responses API response ID for delta tracking
+  run_id?: string; // Deprecated alias
 }
 
 export interface QuickAction {
