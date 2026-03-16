@@ -351,6 +351,22 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
               }));
             }
           });
+      } else if (error?.name === "MessageLimitError") {
+        // Message limit — remove optimistic message, re-throw for UI to handle
+        set((state) => ({
+          typing: false,
+          sending: false,
+          messages: state.messages.filter(
+            (m) => m.client_temp_id !== clientTempId
+          ),
+          pendingReconciliation: state.pendingReconciliation.filter(
+            (id) => id !== clientTempId
+          ),
+          pendingMessageIds: state.pendingMessageIds.filter(
+            (id) => id !== clientTempId
+          ),
+        }));
+        throw error;
       } else {
         // Non-timeout error — show error immediately
         set((state) => ({
