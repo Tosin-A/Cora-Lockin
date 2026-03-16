@@ -343,6 +343,58 @@ async def get_home_data(user_id: str = Depends(get_current_user_id)):
 # INSIGHTS ENDPOINTS
 # ============================================
 
+
+async def persist_generated_insights(
+    user_id: str, insights: List[dict]
+) -> List[str]:
+    """
+    Persist generated insights to the insights table via upsert.
+    Returns list of IDs for newly inserted rows.
+    Uses (user_id, category, date) as the dedup key.
+    """
+    sb = get_supabase_client()
+    today = date.today().isoformat()
+    new_ids: List[str] = []
+
+    for insight in insights[:5]:
+        category = insight.get("category", "general")
+        title = insight.get("title", "")
+        body = insight.get("body", "")
+
+        # Check if already persisted today for this category
+        existing = sb.table("insights").select("id").eq(
+            "user_id", user_id
+        ).eq("category", category).gte(
+            "created_at", f"{today}T00:00:00"
+        ).limit(1).execute()
+
+        if existing.data:
+            continue
+
+        row = {
+            "user_id": user_id,
+            "title": title,
+            "body": body,
+            "category": category,
+            "trend": insight.get("trend", "stable"),
+            "actionable": insight.get("actionable", False),
+            "action_text": insight.get("action_text"),
+            "priority": insight.get("priority", 0),
+            "saved": False,
+            "dismissed": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        try:
+            resp = sb.table("insights").insert(row).execute()
+            if resp.data:
+                new_ids.append(resp.data[0]["id"])
+        except Exception as e:
+            logger.warning(f"Error persisting insight for {user_id}/{category}: {e}")
+
+    return new_ids
+
+
 @router.get("/insights")
 async def get_insights(
     user_id: str = Depends(get_current_user_id),
@@ -375,7 +427,10 @@ async def get_insights(
         generated_insights = await insight_generation_service.generate_insights(
             user_id, "weekly", wellness_score=wellness_score
         )
-        
+
+        # Persist insights so home screen and scheduled jobs can find them
+        await persist_generated_insights(user_id, generated_insights)
+
         # Convert generated insights to pattern format
         patterns = []
         for insight in generated_insights[:5]:  # Top 5
@@ -1597,6 +1652,149 @@ async def initialize_user(request: UserInitRequest, authenticated_user_id: str =
     except Exception as e:
         logger.error(f"Error initializing user {request.user_id}: {e}")
         raise DatabaseError("Failed to initialize user", original_error=e)
+
+
+# ============================================
+# ONBOARDING COMPLETION ENDPOINT
+# ============================================
+
+# Static mapping from goals to recurring tasks
+GOAL_TO_RECURRING_TASKS = {
+    "Study": [
+        {"title": "Study for 30 minutes", "icon": "book-outline"},
+        {"title": "Review notes before bed", "icon": "document-text-outline"},
+        {"title": "Take a study break every hour", "icon": "timer-outline"},
+    ],
+    "Health": [
+        {"title": "Drink 8 glasses of water", "icon": "water-outline"},
+        {"title": "Take a 20-minute walk", "icon": "walk-outline"},
+        {"title": "Eat a healthy breakfast", "icon": "nutrition-outline"},
+    ],
+    "Habits": [
+        {"title": "Morning routine check-in", "icon": "sunny-outline"},
+        {"title": "Plan tomorrow before bed", "icon": "list-outline"},
+        {"title": "Read for 15 minutes", "icon": "book-outline"},
+    ],
+    "Sleep": [
+        {"title": "No screens 30 min before bed", "icon": "phone-portrait-outline"},
+        {"title": "Set a consistent bedtime", "icon": "moon-outline"},
+        {"title": "Wind down with stretching", "icon": "body-outline"},
+    ],
+    "Focus": [
+        {"title": "1 hour deep work block", "icon": "hourglass-outline"},
+        {"title": "Clear desk before starting", "icon": "desktop-outline"},
+        {"title": "Silence notifications while working", "icon": "notifications-off-outline"},
+    ],
+}
+
+
+class OnboardingCompleteRequest(BaseModel):
+    goals: List[str] = Field(default_factory=list)
+    messaging_style: Optional[str] = "balanced"
+
+
+@router.post("/onboarding/complete")
+async def complete_onboarding(
+    request: OnboardingCompleteRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Post-onboarding: send welcome coach message and create starter recurring tasks.
+    """
+    try:
+        supabase = get_supabase_client()
+        now = datetime.now(timezone.utc).isoformat()
+
+        # 1. Create a welcome coach message
+        style = request.messaging_style or "balanced"
+        if style == "firm":
+            welcome_text = (
+                "Welcome to CoreSense. No fluff, just results. "
+                "I've set up some starter habits based on your goals. "
+                "Let's get to work."
+            )
+        elif style == "supportive":
+            welcome_text = (
+                "Welcome to CoreSense! I'm so glad you're here. "
+                "I've created a few starter habits to help you get going. "
+                "Remember, every small step counts!"
+            )
+        else:
+            welcome_text = (
+                "Welcome to CoreSense. I've set up some starter habits "
+                "based on your goals. Check them out and let's build momentum together."
+            )
+
+        coach_message = None
+        try:
+            msg_data = {
+                "user_id": user_id,
+                "content": welcome_text,
+                "sender_type": "gpt",
+                "created_at": now,
+            }
+            msg_resp = supabase.table("messages").insert(msg_data).execute()
+            if msg_resp.data:
+                coach_message = {
+                    "id": msg_resp.data[0]["id"],
+                    "text": welcome_text,
+                    "timestamp": now,
+                }
+        except Exception as msg_err:
+            logger.warning(f"Failed to create welcome message: {msg_err}")
+            coach_message = {"text": welcome_text, "timestamp": now}
+
+        # 2. Create 3 starter recurring tasks from goal mapping
+        starter_habits = []
+        selected_tasks = []
+        for goal in request.goals:
+            tasks_for_goal = GOAL_TO_RECURRING_TASKS.get(goal, [])
+            for t in tasks_for_goal:
+                if t["title"] not in [s["title"] for s in selected_tasks]:
+                    selected_tasks.append(t)
+                    if len(selected_tasks) >= 3:
+                        break
+            if len(selected_tasks) >= 3:
+                break
+
+        # Fallback if no goals matched
+        if not selected_tasks:
+            selected_tasks = [
+                {"title": "Check in with yourself", "icon": "heart-outline"},
+                {"title": "Move for 15 minutes", "icon": "walk-outline"},
+                {"title": "Plan your top 3 priorities", "icon": "list-outline"},
+            ]
+
+        for t in selected_tasks[:3]:
+            try:
+                task_data = {
+                    "user_id": user_id,
+                    "title": t["title"],
+                    "icon": t.get("icon", "checkmark-circle-outline"),
+                    "created_by": "coach",
+                    "status": "pending",
+                    "priority": "medium",
+                    "is_recurring": True,
+                    "frequency": "daily",
+                    "streak_count": 0,
+                    "longest_streak": 0,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                resp = supabase.table("shared_todos").insert(task_data).execute()
+                if resp.data:
+                    starter_habits.append(resp.data[0])
+            except Exception as task_err:
+                logger.warning(f"Failed to create starter recurring task: {task_err}")
+
+        return {
+            "coach_message": coach_message,
+            "starter_habits": starter_habits,
+        }
+
+    except Exception as e:
+        logger.error(f"Error completing onboarding: {e}")
+        raise DatabaseError("Failed to complete onboarding", original_error=e)
 
 
 # ============================================
