@@ -31,6 +31,7 @@ import { useChatStore } from "../stores/chatStore";
 import { useUserStore } from "../stores/userStore";
 import { useInsightsStore } from "../stores/insightsStore";
 import { useMessageLimitStore } from "../stores/messageLimitStore";
+import { useSubscriptionStore } from "../stores/subscriptionStore";
 import { scheduleWithSmartGap } from "../utils/calendarService";
 import { coresenseApi, CoachPersonality } from "../utils/coresenseApi";
 
@@ -74,10 +75,15 @@ export default function CoachChatScreen({ navigation }: any) {
   const generateInsightFromChat = useInsightsStore((s) => s.generateInsightFromChat);
   const messagesRemaining = useMessageLimitStore((s) => s.messagesRemaining);
   const loadUsageStats = useMessageLimitStore((s) => s.loadUsageStats);
+  const isPro = useSubscriptionStore((s) => s.isPro);
+  const startCheckout = useSubscriptionStore((s) => s.startCheckout);
+  const productPrice = useSubscriptionStore((s) => s.productPrice);
+  const checkoutLoading = useSubscriptionStore((s) => s.checkoutLoading);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [calendarAdding, setCalendarAdding] = useState(false);
   const [calendarSuccess, setCalendarSuccess] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const skeletonPulse = useRef(new Animated.Value(0.3)).current;
 
   // Coach personality state
@@ -222,10 +228,14 @@ export default function CoachChatScreen({ navigation }: any) {
     try {
       await sendMessage(messageText);
       await generateInsightFromChat(messageText, "productivity");
-      // Refresh usage stats after sending
       loadUsageStats();
     } catch (error: any) {
-      Alert.alert("Error", "Failed to send message. Please try again.");
+      if (error?.name === "MessageLimitError" || error?.message?.includes("message_limit_reached")) {
+        loadUsageStats();
+        setShowUpgradeModal(true);
+      } else {
+        Alert.alert("Error", "Failed to send message. Please try again.");
+      }
     }
   }, [sendMessage, generateInsightFromChat, loadUsageStats]);
 
@@ -609,9 +619,114 @@ export default function CoachChatScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* Upgrade to Pro Modal */}
+      <Modal
+        visible={showUpgradeModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowUpgradeModal(false)}
+      >
+        <View style={upgradeStyles.overlay}>
+          <View style={[upgradeStyles.card, { backgroundColor: colors.surface }]}>
+            <View style={upgradeStyles.iconWrap}>
+              <Ionicons name="lock-closed" size={32} color={colors.primary} />
+            </View>
+            <Text style={[upgradeStyles.title, { color: colors.textPrimary }]}>
+              You've hit your message limit
+            </Text>
+            <Text style={[upgradeStyles.desc, { color: colors.textSecondary }]}>
+              Upgrade to Pro for unlimited messages and keep the conversation going
+            </Text>
+            <TouchableOpacity
+              style={[upgradeStyles.upgradeBtn, { backgroundColor: colors.primary }]}
+              onPress={async () => {
+                setShowUpgradeModal(false);
+                await startCheckout();
+              }}
+              activeOpacity={0.8}
+              disabled={checkoutLoading}
+            >
+              {checkoutLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={upgradeStyles.upgradeBtnText}>
+                  Upgrade to Pro{productPrice ? ` — ${productPrice}` : ""}
+                </Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={upgradeStyles.dismissBtn}
+              onPress={() => setShowUpgradeModal(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={[upgradeStyles.dismissText, { color: colors.textTertiary }]}>
+                Maybe later
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
+
+const upgradeStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.lg,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 16,
+    padding: Spacing.xl,
+    alignItems: "center",
+  },
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(0,0,0,0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.md,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: Spacing.sm,
+  },
+  desc: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    marginBottom: Spacing.lg,
+  },
+  upgradeBtn: {
+    width: "100%",
+    height: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.sm,
+  },
+  upgradeBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  dismissBtn: {
+    paddingVertical: Spacing.sm,
+  },
+  dismissText: {
+    fontSize: 14,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {

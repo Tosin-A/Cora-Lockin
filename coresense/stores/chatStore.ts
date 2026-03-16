@@ -244,7 +244,9 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
               (id) => id !== clientTempId
             ),
           }));
-          return;
+          const limitError = new Error("message_limit_reached");
+          limitError.name = "MessageLimitError";
+          throw limitError;
         }
         throw new Error(errorString);
       }
