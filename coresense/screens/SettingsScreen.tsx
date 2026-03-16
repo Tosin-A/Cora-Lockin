@@ -45,7 +45,6 @@ import { API_BASE_URL } from "../utils/apiConfig";
 import {
   coresenseApi,
   NotificationPreferences,
-  CoachPersonality,
 } from "../utils/coresenseApi";
 import {
   registerForPushNotifications,
@@ -79,8 +78,6 @@ const DEFAULT_PREFERENCES = {
   push_notifications: true,
   task_reminders: true,
   weekly_reports: true,
-  // Coach personality
-  coach_personality: "cora",
 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -286,11 +283,6 @@ export default function SettingsScreen() {
     type: "success",
   });
 
-  // Coach personality state
-  const [personalities, setPersonalities] = useState<CoachPersonality[]>([]);
-  const [selectedPersonality, setSelectedPersonality] = useState("cora");
-  const [savingPersonality, setSavingPersonality] = useState(false);
-
   // NEW: Time picker state
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
@@ -312,11 +304,6 @@ export default function SettingsScreen() {
         if (notifData) {
           setNotifPrefs(notifData);
         }
-        // Load coach personalities
-        const { data: personalityData } = await coresenseApi.getCoachPersonalities();
-        if (personalityData?.personalities) {
-          setPersonalities(personalityData.personalities);
-        }
         setNotifPrefsLoading(false);
         setIsLoading(false);
       }
@@ -327,9 +314,6 @@ export default function SettingsScreen() {
   useEffect(() => {
     const prefs = preferences || DEFAULT_PREFERENCES;
     setLocalPrefs(prefs);
-    if ((prefs as any).coach_personality) {
-      setSelectedPersonality((prefs as any).coach_personality);
-    }
   }, [preferences]);
 
   // Refresh subscription status when Settings is focused (e.g. after returning from purchase)
@@ -505,25 +489,6 @@ export default function SettingsScreen() {
     const date = new Date();
     date.setHours(hours, minutes, 0, 0);
     return date;
-  };
-
-  // Get frequency label
-  const handlePersonalitySelect = async (personalityId: string) => {
-    if (savingPersonality || personalityId === selectedPersonality) return;
-    setSavingPersonality(true);
-    const previousId = selectedPersonality;
-    setSelectedPersonality(personalityId);
-    try {
-      const { error } = await coresenseApi.setCoachPersonality(personalityId);
-      if (error) throw new Error(error);
-      showToast("Coach personality updated", "success");
-    } catch (e) {
-      console.error("Error setting personality:", e);
-      setSelectedPersonality(previousId);
-      showToast("Failed to update personality", "error");
-    } finally {
-      setSavingPersonality(false);
-    }
   };
 
   const getFrequencyLabel = (freq: number): string => {
@@ -867,54 +832,6 @@ export default function SettingsScreen() {
           {/* ================================================================ */}
           <Card style={styles.section}>
             <SectionHeader icon="chatbubbles-outline" title="Coach Interaction" iconColor={colors.neonPink} colors={colors} />
-
-            {/* Coach Personality Picker */}
-            {personalities.length > 0 && (
-              <View style={styles.personalitySection}>
-                <Text style={[styles.frequencyTitle, { color: colors.textPrimary }]}>Coach Personality</Text>
-                <Text style={[styles.frequencyDescription, { color: colors.textTertiary }]}>
-                  Choose your coaching style. Takes effect on your next message.
-                </Text>
-                <View style={styles.personalityGrid}>
-                  {personalities.map((p) => {
-                    const isSelected = p.id === selectedPersonality;
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[
-                          styles.personalityCard,
-                          { backgroundColor: colors.surfaceMedium },
-                          isSelected && { borderColor: colors.primary, borderWidth: 1.5 },
-                        ]}
-                        onPress={() => handlePersonalitySelect(p.id)}
-                        activeOpacity={0.7}
-                        disabled={savingPersonality}
-                        accessibilityLabel={`Select ${p.name} coach personality`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isSelected }}
-                      >
-                        <View style={styles.personalityCardHeader}>
-                          <Text style={[styles.personalityName, { color: colors.textPrimary }]}>{p.name}</Text>
-                          {isSelected && (
-                            <View style={[styles.personalityCheckmark, { backgroundColor: colors.primary }]}>
-                              <Ionicons name="checkmark" size={12} color="#fff" />
-                            </View>
-                          )}
-                        </View>
-                        <Text style={[styles.personalityDescription, { color: colors.textSecondary }]} numberOfLines={2}>
-                          {p.description}
-                        </Text>
-                        <Text style={[styles.personalitySample, { color: colors.textTertiary }]} numberOfLines={2}>
-                          "{p.sample}"
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            <View style={styles.divider} />
 
             {/* Frequency Slider */}
             <View style={styles.frequencyContainer}>
@@ -1884,49 +1801,4 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
   },
 
-  // Coach Personality Picker
-  personalitySection: {
-    marginBottom: Spacing.md,
-  },
-  personalityGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Spacing.sm,
-    marginTop: Spacing.sm,
-  },
-  personalityCard: {
-    width: (SCREEN_WIDTH - Spacing.lg * 2 - Spacing.md * 2 - Spacing.sm) / 2,
-    borderRadius: 10,
-    padding: Spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(0,0,0,0.06)",
-    minHeight: 120,
-  },
-  personalityCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  personalityName: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  personalityCheckmark: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  personalityDescription: {
-    fontSize: 12,
-    lineHeight: 16,
-    marginBottom: 8,
-  },
-  personalitySample: {
-    fontSize: 11,
-    fontStyle: "italic",
-    lineHeight: 15,
-  },
 });

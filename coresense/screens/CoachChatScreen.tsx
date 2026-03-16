@@ -16,6 +16,8 @@ import {
   ActivityIndicator,
   Keyboard,
   Animated,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRoute, RouteProp } from "@react-navigation/native";
@@ -30,6 +32,9 @@ import { useUserStore } from "../stores/userStore";
 import { useInsightsStore } from "../stores/insightsStore";
 import { useMessageLimitStore } from "../stores/messageLimitStore";
 import { scheduleWithSmartGap } from "../utils/calendarService";
+import { coresenseApi, CoachPersonality } from "../utils/coresenseApi";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Route params type for insight context
 type CoachChatRouteParams = {
@@ -75,6 +80,12 @@ export default function CoachChatScreen({ navigation }: any) {
   const [calendarSuccess, setCalendarSuccess] = useState(false);
   const skeletonPulse = useRef(new Animated.Value(0.3)).current;
 
+  // Coach personality state
+  const [showPersonalityPicker, setShowPersonalityPicker] = useState(false);
+  const [personalities, setPersonalities] = useState<CoachPersonality[]>([]);
+  const [selectedPersonality, setSelectedPersonality] = useState<CoachPersonality | null>(null);
+  const [savingPersonality, setSavingPersonality] = useState(false);
+
   useEffect(() => {
     if (!loading || messages.length > 0) return;
     const anim = Animated.loop(
@@ -90,6 +101,18 @@ export default function CoachChatScreen({ navigation }: any) {
   useEffect(() => {
     loadCachedMessages();
     loadUsageStats();
+    // Load coach personalities
+    (async () => {
+      const { data } = await coresenseApi.getCoachPersonalities();
+      if (data?.personalities) {
+        setPersonalities(data.personalities);
+        // Load current selection from preferences
+        const { data: prefs } = await coresenseApi.getPreferences();
+        const currentId = (prefs as any)?.coachPersonality || "cora";
+        const current = data.personalities.find((p) => p.id === currentId) || data.personalities[0];
+        setSelectedPersonality(current);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -210,6 +233,23 @@ export default function CoachChatScreen({ navigation }: any) {
       );
     }
   }, [completeQuickAction, quickActions, generateInsightFromChat]);
+
+  const handlePersonalitySelect = useCallback(async (personality: CoachPersonality) => {
+    if (savingPersonality || personality.id === selectedPersonality?.id) return;
+    setSavingPersonality(true);
+    const previous = selectedPersonality;
+    setSelectedPersonality(personality);
+    try {
+      const { error } = await coresenseApi.setCoachPersonality(personality.id);
+      if (error) throw new Error(error);
+      setShowPersonalityPicker(false);
+    } catch {
+      setSelectedPersonality(previous);
+      Alert.alert("Error", "Failed to update coach personality.");
+    } finally {
+      setSavingPersonality(false);
+    }
+  }, [savingPersonality, selectedPersonality]);
 
   const handleAddToCalendar = useCallback(async () => {
     if (!pendingCalendarEvent || calendarAdding) return;
@@ -352,7 +392,7 @@ export default function CoachChatScreen({ navigation }: any) {
             <View style={[styles.coachAvatar, { backgroundColor: colors.primary }]}>
               <Ionicons name="person" size={20} color="#FFFFFF" />
             </View>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Kora</Text>
+            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{selectedPersonality?.name || "Cora"}</Text>
             {typing && <Text style={[styles.headerSubtitle, { color: colors.textTertiary }]}>Typing...</Text>}
           </View>
 
@@ -361,9 +401,12 @@ export default function CoachChatScreen({ navigation }: any) {
             onPress={() => {
               Alert.alert("Chat Options", "Choose an action", [
                 {
+                  text: "Change Coach",
+                  onPress: () => setShowPersonalityPicker(true),
+                },
+                {
                   text: "Clear Chat",
                   onPress: () => {
-                    // Clear chat history
                     useChatStore.getState().clearChat();
                   },
                 },
@@ -413,7 +456,7 @@ export default function CoachChatScreen({ navigation }: any) {
               color={colors.accent}
             />
           </View>
-          <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>Kora</Text>
+          <Text style={[styles.welcomeTitle, { color: colors.textPrimary }]}>{selectedPersonality?.name || "Cora"}</Text>
           <Text style={[styles.welcomeSubtitle, { color: colors.textSecondary }]}>
             I'm here to hold you accountable. Not to cheer you on. Not to be
             your therapist. To call you out when you're making excuses and
@@ -501,6 +544,62 @@ export default function CoachChatScreen({ navigation }: any) {
           />
         </View>
       </KeyboardAvoidingView>
+
+      {/* Personality Picker Modal */}
+      <Modal
+        visible={showPersonalityPicker}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPersonalityPicker(false)}
+      >
+        <View style={personalityStyles.overlay}>
+          <View style={[personalityStyles.sheet, { backgroundColor: colors.surface }]}>
+            <View style={personalityStyles.handle} />
+            <View style={personalityStyles.sheetHeader}>
+              <Text style={[personalityStyles.sheetTitle, { color: colors.textPrimary }]}>Choose Your Coach</Text>
+              <TouchableOpacity
+                onPress={() => setShowPersonalityPicker(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[personalityStyles.sheetSubtitle, { color: colors.textTertiary }]}>
+              Takes effect on your next message
+            </Text>
+
+            {personalities.map((p) => {
+              const isSelected = p.id === selectedPersonality?.id;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[
+                    personalityStyles.card,
+                    { backgroundColor: colors.background, borderColor: isSelected ? colors.primary : "rgba(0,0,0,0.06)" },
+                    isSelected && { borderWidth: 1.5 },
+                  ]}
+                  onPress={() => handlePersonalitySelect(p)}
+                  activeOpacity={0.7}
+                  disabled={savingPersonality}
+                >
+                  <View style={personalityStyles.cardRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[personalityStyles.cardName, { color: colors.textPrimary }]}>{p.name}</Text>
+                      <Text style={[personalityStyles.cardDesc, { color: colors.textSecondary }]}>{p.description}</Text>
+                    </View>
+                    {isSelected && (
+                      <View style={[personalityStyles.checkmark, { backgroundColor: colors.primary }]}>
+                        <Ionicons name="checkmark" size={14} color="#fff" />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[personalityStyles.cardSample, { color: colors.textTertiary }]}>"{p.sample}"</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -707,5 +806,76 @@ const calendarStyles = StyleSheet.create({
   },
   successText: {
     fontSize: 14,
+  },
+});
+
+const personalityStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 40,
+    maxHeight: "80%",
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(0,0,0,0.15)",
+    alignSelf: "center",
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  sheetSubtitle: {
+    fontSize: 13,
+    marginBottom: Spacing.lg,
+  },
+  card: {
+    borderRadius: 10,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  cardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  cardName: {
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  cardDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  checkmark: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: Spacing.sm,
+  },
+  cardSample: {
+    fontSize: 12,
+    fontStyle: "italic",
+    lineHeight: 16,
   },
 });
