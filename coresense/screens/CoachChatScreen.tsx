@@ -225,6 +225,11 @@ export default function CoachChatScreen({ navigation }: any) {
   }, [displayMessages.length]);
 
   const handleSendMessage = useCallback(async (messageText: string) => {
+    // Block sending before it hits the API if limit is reached
+    if (messagesRemaining <= 0) {
+      setShowUpgradeModal(true);
+      return;
+    }
     try {
       await sendMessage(messageText);
       await generateInsightFromChat(messageText, "productivity");
@@ -237,7 +242,7 @@ export default function CoachChatScreen({ navigation }: any) {
         Alert.alert("Error", "Failed to send message. Please try again.");
       }
     }
-  }, [sendMessage, generateInsightFromChat, loadUsageStats]);
+  }, [sendMessage, generateInsightFromChat, loadUsageStats, messagesRemaining]);
 
   const handleQuickAction = useCallback(async (actionId: string) => {
     completeQuickAction(actionId);
@@ -552,16 +557,35 @@ export default function CoachChatScreen({ navigation }: any) {
         {renderCalendarActionCard()}
 
         {/* Chat Input */}
-        <View style={styles.inputContainer}>
-          <ChatInput
-            onSendMessage={handleSendMessage}
-            quickActions={quickActions}
-            onQuickActionPress={handleQuickAction}
-            disabled={sending || messagesRemaining <= 0}
-            placeholder={messagesRemaining <= 0 ? "Message limit reached" : "Chat to me"}
-            initialMessage={initialMessage}
-          />
-        </View>
+        {messagesRemaining <= 0 ? (
+          <TouchableOpacity
+            style={styles.inputContainer}
+            activeOpacity={0.8}
+            onPress={() => setShowUpgradeModal(true)}
+          >
+            <View pointerEvents="none">
+              <ChatInput
+                onSendMessage={handleSendMessage}
+                quickActions={[]}
+                onQuickActionPress={handleQuickAction}
+                disabled={true}
+                placeholder="Upgrade to Pro for more messages"
+                initialMessage=""
+              />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.inputContainer}>
+            <ChatInput
+              onSendMessage={handleSendMessage}
+              quickActions={quickActions}
+              onQuickActionPress={handleQuickAction}
+              disabled={sending}
+              placeholder="Chat to me"
+              initialMessage={initialMessage}
+            />
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Personality Picker Modal */}
