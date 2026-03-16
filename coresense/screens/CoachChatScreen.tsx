@@ -350,7 +350,7 @@ export default function CoachChatScreen({ navigation }: any) {
     );
   };
 
-  const renderMessage = ({ item, index }: { item: any; index: number }) => {
+  const renderMessage = useCallback(({ item, index }: { item: any; index: number }) => {
     const prevMessage = displayMessages[index - 1];
     const isGrouped =
       prevMessage &&
@@ -366,7 +366,9 @@ export default function CoachChatScreen({ navigation }: any) {
         userAvatar={profile?.full_name?.[0] || "👤"}
       />
     );
-  };
+  }, [displayMessages, profile?.full_name]);
+
+  const keyExtractor = useCallback((item: any) => item.id, []);
 
   const renderHeader = () => {
     return (
@@ -491,7 +493,7 @@ export default function CoachChatScreen({ navigation }: any) {
             ref={flatListRef}
             data={displayMessages}
             renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
+            keyExtractor={keyExtractor}
             style={styles.messagesList}
             contentContainerStyle={[
               styles.messagesContent,
@@ -502,9 +504,10 @@ export default function CoachChatScreen({ navigation }: any) {
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            maxToRenderPerBatch={15}
-            windowSize={10}
-            initialNumToRender={20}
+            maxToRenderPerBatch={10}
+            windowSize={7}
+            initialNumToRender={15}
+            removeClippedSubviews={true}
             ListEmptyComponent={renderEmptyChat}
             ListFooterComponent={renderTypingIndicator}
           />
