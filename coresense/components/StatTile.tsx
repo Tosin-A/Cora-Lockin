@@ -19,7 +19,7 @@ interface StatTileProps {
   onPress?: () => void;
 }
 
-export const StatTile: React.FC<StatTileProps> = ({
+export const StatTile: React.FC<StatTileProps> = React.memo(({
   label,
   value,
   icon,
@@ -68,7 +68,7 @@ export const StatTile: React.FC<StatTileProps> = ({
   }
 
   return <Card>{content}</Card>;
-};
+});
 
 const styles = StyleSheet.create({
   container: {

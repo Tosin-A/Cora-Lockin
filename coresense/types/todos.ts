@@ -13,6 +13,16 @@ export interface Todo {
   coach_reasoning?: string;
   linked_insight_id?: string;
   completed_at?: string;
+  is_recurring?: boolean;
+  frequency?: 'daily' | 'weekly';
+  streak_count?: number;
+  longest_streak?: number;
+  icon?: string;
+  completed_today?: boolean;
+  weekly_completed?: number;
+  weekly_target?: number;
+  sort_order?: number;
+  streak_milestone?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -25,6 +35,10 @@ export interface CreateTodoInput {
   due_time?: string;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
+  is_recurring?: boolean;
+  frequency?: 'daily' | 'weekly';
+  icon?: string;
+  weekly_target?: number;
 }
 
 export interface CreateCoachTodoInput extends CreateTodoInput {

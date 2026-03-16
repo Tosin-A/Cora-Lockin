@@ -70,7 +70,7 @@ export function WellnessScoreCard({ score, onPress }: WellnessScoreCardProps) {
   );
 
   return (
-    <Card variant="purple" style={styles.card} onPress={onPress}>
+    <Card style={styles.card} onPress={onPress}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Wellness Score</Text>

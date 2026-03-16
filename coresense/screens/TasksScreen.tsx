@@ -1,7 +1,8 @@
 /**
  * Tasks Screen
- * Shows user's pending tasks, completed tasks, and coach suggestions
- * Users can manage their tasks and add coach suggestions to their to-do list
+ * Two-tab view: Tasks (one-off) and Habits (recurring tasks)
+ * Tasks tab: pending tasks, completed, coach suggestions
+ * Habits tab: recurring tasks with toggle, streaks, icon, swipe-to-archive
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -40,6 +41,36 @@ interface CoachSuggestion {
   reason: string;
 }
 
+// Available icons for habits
+const HABIT_ICONS = [
+  'checkmark-circle-outline',
+  'sunny-outline',
+  'moon-outline',
+  'water-outline',
+  'walk-outline',
+  'barbell-outline',
+  'book-outline',
+  'document-text-outline',
+  'timer-outline',
+  'hourglass-outline',
+  'desktop-outline',
+  'notifications-off-outline',
+  'nutrition-outline',
+  'heart-outline',
+  'body-outline',
+  'list-outline',
+  'flash-outline',
+  'leaf-outline',
+  'musical-notes-outline',
+  'medkit-outline',
+  'phone-portrait-outline',
+  'bed-outline',
+  'cafe-outline',
+  'bicycle-outline',
+];
+
+type TabType = 'tasks' | 'habits';
+
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -47,18 +78,28 @@ export default function TasksScreen() {
   const { messages } = useChatStore();
   const {
     fetchTodos,
+    fetchRecurringToday,
     updateTodoStatus,
     createTodo,
+    toggleRecurringTodo,
+    archiveRecurringTodo,
     getPendingTodos,
     getCompletedTodos,
+    recurringTodos,
+    getRecurringIncomplete,
+    getRecurringComplete,
+    streakCelebration,
+    dismissStreakCelebration,
   } = useTodosStore();
 
+  const [activeTab, setActiveTab] = useState<TabType>('tasks');
   const [refreshing, setRefreshing] = useState(false);
   const [coachSuggestions, setCoachSuggestions] = useState<CoachSuggestion[]>([]);
   const [completingTasks, setCompletingTasks] = useState<Set<string>>(new Set());
   const [addingSuggestions, setAddingSuggestions] = useState<Set<string>>(new Set());
   const [showCompleted, setShowCompleted] = useState(false);
   const [addTaskModalVisible, setAddTaskModalVisible] = useState(false);
+  const [addHabitModalVisible, setAddHabitModalVisible] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskDueDate, setNewTaskDueDate] = useState<string | undefined>(undefined);
@@ -69,12 +110,19 @@ export default function TasksScreen() {
   const [calendarPickerTask, setCalendarPickerTask] = useState<Todo | null>(null);
   const [calendarPickerDate, setCalendarPickerDate] = useState<string>('');
 
+  // Add habit modal state
+  const [newHabitTitle, setNewHabitTitle] = useState('');
+  const [newHabitIcon, setNewHabitIcon] = useState('checkmark-circle-outline');
+  const [newHabitFrequency, setNewHabitFrequency] = useState<'daily' | 'weekly'>('daily');
+  const [newHabitWeeklyTarget, setNewHabitWeeklyTarget] = useState(3);
+
   const pendingTodos = getPendingTodos();
   const completedTodos = getCompletedTodos();
 
   useEffect(() => {
     if (user) {
       fetchTodos();
+      fetchRecurringToday();
       generateCoachSuggestions();
     }
   }, [user]);
@@ -83,13 +131,11 @@ export default function TasksScreen() {
     const recentMessages = messages.slice(-10);
     const suggestions: CoachSuggestion[] = [];
 
-    // Check for sleep-related messages
     const sleepMessages = recentMessages.filter(msg =>
       msg.text.toLowerCase().includes('sleep') ||
       msg.text.toLowerCase().includes('tired') ||
       msg.text.toLowerCase().includes('rest')
     );
-
     if (sleepMessages.length > 0) {
       suggestions.push({
         id: 'sleep-routine',
@@ -102,13 +148,11 @@ export default function TasksScreen() {
       });
     }
 
-    // Check for focus/productivity messages
     const focusMessages = recentMessages.filter(msg =>
       msg.text.toLowerCase().includes('focus') ||
       msg.text.toLowerCase().includes('work') ||
       msg.text.toLowerCase().includes('productive')
     );
-
     if (focusMessages.length > 0) {
       suggestions.push({
         id: 'focus-session',
@@ -121,13 +165,11 @@ export default function TasksScreen() {
       });
     }
 
-    // Check for mood/emotion messages
     const moodMessages = recentMessages.filter(msg =>
       msg.text.toLowerCase().includes('mood') ||
       msg.text.toLowerCase().includes('feel') ||
       msg.text.toLowerCase().includes('emotion')
     );
-
     if (moodMessages.length > 0) {
       suggestions.push({
         id: 'mood-check',
@@ -140,7 +182,6 @@ export default function TasksScreen() {
       });
     }
 
-    // Add default suggestions if no specific patterns
     if (suggestions.length === 0) {
       suggestions.push(
         {
@@ -178,10 +219,14 @@ export default function TasksScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchTodos();
-    generateCoachSuggestions();
+    if (activeTab === 'tasks') {
+      await fetchTodos();
+      generateCoachSuggestions();
+    } else {
+      await fetchRecurringToday();
+    }
     setRefreshing(false);
-  }, [fetchTodos, generateCoachSuggestions]);
+  }, [activeTab, fetchTodos, fetchRecurringToday, generateCoachSuggestions]);
 
   const handleCompleteTask = useCallback((todoId: string) => {
     setCompletingTasks(prev => new Set(prev).add(todoId));
@@ -198,14 +243,11 @@ export default function TasksScreen() {
 
   const handleAddSuggestion = useCallback(async (suggestion: CoachSuggestion) => {
     setAddingSuggestions(prev => new Set(prev).add(suggestion.id));
-
     await createTodo({
       title: suggestion.title,
       description: suggestion.description,
       priority: suggestion.priority,
     });
-
-    // Remove the suggestion from the list after adding
     setCoachSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
     setAddingSuggestions(prev => {
       const next = new Set(prev);
@@ -217,7 +259,6 @@ export default function TasksScreen() {
   const handleAddTaskToCalendar = useCallback(async (todo: Todo, dateOverride?: string) => {
     const targetDateStr = dateOverride || todo.due_date;
     if (!targetDateStr) {
-      // No due date – open date picker
       setCalendarPickerDate(new Date().toISOString().split('T')[0]);
       setCalendarPickerTask(todo);
       return;
@@ -225,18 +266,14 @@ export default function TasksScreen() {
 
     setCalendaringTasks(prev => new Set(prev).add(todo.id));
     try {
-      // Parse YYYY-MM-DD as local date (not UTC)
       const [y, mo, d] = targetDateStr.split('-').map(Number);
       const targetDate = new Date(y, mo - 1, d);
-
-      // Derive duration from description if it contains "X min" pattern
       let durationMinutes = 60;
       const durationMatch = todo.description?.match(/(\d+)\s*min/i);
       if (durationMatch) {
         const parsed = parseInt(durationMatch[1], 10);
         if (parsed > 0 && parsed <= 480) durationMinutes = parsed;
       }
-
       const result = await scheduleWithSmartGap(
         todo.title,
         targetDate,
@@ -274,7 +311,6 @@ export default function TasksScreen() {
 
   const handleAddTask = useCallback(async () => {
     if (!newTaskTitle.trim()) return;
-
     await createTodo({
       title: newTaskTitle.trim(),
       description: newTaskDescription.trim() || undefined,
@@ -284,7 +320,6 @@ export default function TasksScreen() {
       reminder_enabled: newTaskReminderEnabled && !!newTaskDueDate,
       reminder_minutes_before: 30,
     });
-
     setNewTaskTitle('');
     setNewTaskDescription('');
     setNewTaskDueDate(undefined);
@@ -293,7 +328,40 @@ export default function TasksScreen() {
     setAddTaskModalVisible(false);
   }, [newTaskTitle, newTaskDescription, newTaskDueDate, newTaskDueTime, newTaskReminderEnabled, createTodo]);
 
-  // Format time for display (e.g., "09:00" -> "9:00 AM")
+  const handleAddHabit = useCallback(async () => {
+    if (!newHabitTitle.trim()) return;
+    await createTodo({
+      title: newHabitTitle.trim(),
+      is_recurring: true,
+      frequency: newHabitFrequency,
+      icon: newHabitIcon,
+      priority: 'medium',
+      weekly_target: newHabitFrequency === 'weekly' ? newHabitWeeklyTarget : undefined,
+    });
+    setNewHabitTitle('');
+    setNewHabitIcon('checkmark-circle-outline');
+    setNewHabitFrequency('daily');
+    setNewHabitWeeklyTarget(3);
+    setAddHabitModalVisible(false);
+    // Refresh recurring list
+    fetchRecurringToday();
+  }, [newHabitTitle, newHabitIcon, newHabitFrequency, newHabitWeeklyTarget, createTodo, fetchRecurringToday]);
+
+  const handleArchiveHabit = useCallback((todoId: string, title: string) => {
+    Alert.alert(
+      'Archive Habit',
+      `Remove "${title}" from your daily habits?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive',
+          style: 'destructive',
+          onPress: () => archiveRecurringTodo(todoId),
+        },
+      ],
+    );
+  }, [archiveRecurringTodo]);
+
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';
@@ -301,7 +369,6 @@ export default function TasksScreen() {
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
 
-  // Generate time options for picker
   const timeOptions = [
     { label: 'Morning (9:00 AM)', value: '09:00' },
     { label: 'Late Morning (11:00 AM)', value: '11:00' },
@@ -449,6 +516,63 @@ export default function TasksScreen() {
     );
   };
 
+  const renderHabitItem = (todo: Todo) => {
+    const isWeekly = todo.frequency === 'weekly';
+
+    return (
+      <View
+        key={todo.id}
+        style={[styles.habitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      >
+        <TouchableOpacity
+          style={styles.checkboxTouchArea}
+          onPress={() => toggleRecurringTodo(todo.id)}
+          activeOpacity={0.6}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 5 }}
+        >
+          <Ionicons
+            name={todo.completed_today ? 'checkmark-circle' : 'ellipse-outline'}
+            size={24}
+            color={todo.completed_today ? colors.success : colors.textTertiary}
+          />
+        </TouchableOpacity>
+
+        {todo.icon && (
+          <Ionicons name={todo.icon as any} size={20} color={colors.textSecondary} style={{ marginRight: Spacing.sm }} />
+        )}
+
+        <View style={styles.habitContent}>
+          <Text style={[styles.habitTitle, { color: colors.textPrimary }]}>{todo.title}</Text>
+          <View style={styles.habitMeta}>
+            {isWeekly ? (
+              <Text style={[styles.habitStreakText, { color: colors.primary }]}>
+                {todo.weekly_completed ?? 0}/{todo.weekly_target ?? 7} this week
+              </Text>
+            ) : (todo.streak_count ?? 0) > 0 ? (
+              <Text style={[styles.habitStreakText, { color: colors.primary }]}>
+                {todo.streak_count}d streak
+              </Text>
+            ) : null}
+            {(todo.longest_streak ?? 0) > 0 && (
+              <Text style={[styles.habitLongestStreak, { color: colors.textTertiary }]}>
+                Best: {todo.longest_streak}d
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.archiveButton}
+          onPress={() => handleArchiveHabit(todo.id, todo.title)}
+          hitSlop={{ top: 10, bottom: 10, left: 5, right: 10 }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="archive-outline" size={18} color={colors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   const renderSuggestionItem = (suggestion: CoachSuggestion) => {
     const isAdding = addingSuggestions.has(suggestion.id);
 
@@ -466,7 +590,6 @@ export default function TasksScreen() {
           <View style={styles.suggestionText}>
             <Text style={[styles.suggestionTitle, { color: colors.textPrimary }]}>{suggestion.title}</Text>
             <Text style={[styles.suggestionDescription, { color: colors.textSecondary }]}>{suggestion.description}</Text>
-
             <View style={styles.suggestionMeta}>
               {suggestion.duration && (
                 <View style={[styles.durationBadge, { backgroundColor: colors.surfaceMedium }]}>
@@ -495,21 +618,62 @@ export default function TasksScreen() {
     );
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: Math.max(insets.bottom, Spacing.lg) + 80 }
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
+  const renderTabContent = () => {
+    if (activeTab === 'habits') {
+      const incomplete = getRecurringIncomplete();
+      const complete = getRecurringComplete();
+
+      return (
+        <>
+          {/* Active Habits */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Daily Habits</Text>
+              <Text style={[styles.taskCount, { color: colors.textTertiary }]}>
+                {complete.length}/{recurringTodos.length} done
+              </Text>
+            </View>
+
+            {recurringTodos.length > 0 ? (
+              <>
+                {incomplete.map(renderHabitItem)}
+                {complete.map(renderHabitItem)}
+              </>
+            ) : (
+              <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="repeat-outline" size={40} color={colors.textTertiary} />
+                <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No habits yet</Text>
+                <Text style={[styles.emptyStateSubtext, { color: colors.textTertiary }]}>
+                  Create recurring tasks to build daily habits
+                </Text>
+                <TouchableOpacity
+                  style={[styles.addFirstTaskButton, { backgroundColor: colors.primary }]}
+                  onPress={() => setAddHabitModalVisible(true)}
+                >
+                  <Ionicons name="add" size={20} color="#FFFFFF" />
+                  <Text style={[styles.addFirstTaskText, { color: '#FFFFFF' }]}>Add Habit</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {recurringTodos.length > 0 && (
+              <TouchableOpacity
+                style={[styles.addTaskButton, { borderColor: colors.border }]}
+                onPress={() => setAddHabitModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+                <Text style={[styles.addTaskButtonText, { color: colors.primary }]}>Add Habit</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </>
+      );
+    }
+
+    // Tasks tab
+    return (
+      <>
         {/* Pending Tasks Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -547,7 +711,7 @@ export default function TasksScreen() {
           )}
         </View>
 
-        {/* Completed Tasks Section - Separated by day */}
+        {/* Completed Tasks Section */}
         {completedTodos.length > 0 && (() => {
           const today = new Date().toDateString();
           const todayCompleted = completedTodos.filter((todo) => {
@@ -558,16 +722,12 @@ export default function TasksScreen() {
             if (!todo.completed_at) return true;
             return new Date(todo.completed_at).toDateString() !== today;
           });
-
-          // Group previous completed by date
           const groupedPrevious: { [date: string]: Todo[] } = {};
           previousCompleted.forEach((todo) => {
             const dateKey = todo.completed_at
               ? new Date(todo.completed_at).toLocaleDateString()
               : 'Unknown';
-            if (!groupedPrevious[dateKey]) {
-              groupedPrevious[dateKey] = [];
-            }
+            if (!groupedPrevious[dateKey]) groupedPrevious[dateKey] = [];
             groupedPrevious[dateKey].push(todo);
           });
 
@@ -593,7 +753,6 @@ export default function TasksScreen() {
 
               {showCompleted && (
                 <View style={styles.completedList}>
-                  {/* Today's completed tasks */}
                   {todayCompleted.length > 0 && (
                     <View style={styles.completedGroup}>
                       <Text style={[styles.completedGroupTitle, { color: colors.textPrimary }]}>Today</Text>
@@ -605,8 +764,6 @@ export default function TasksScreen() {
                       ))}
                     </View>
                   )}
-
-                  {/* Previous days' completed tasks */}
                   {Object.entries(groupedPrevious).map(([date, todos]) => (
                     <View key={date} style={styles.completedGroup}>
                       <Text style={[styles.completedGroupTitle, { color: colors.textPrimary }]}>{date}</Text>
@@ -624,7 +781,7 @@ export default function TasksScreen() {
           );
         })()}
 
-        {/* Coach Suggestions Section */}
+        {/* Coach Suggestions */}
         {coachSuggestions.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -637,10 +794,66 @@ export default function TasksScreen() {
             <Text style={[styles.sectionSubtitle, { color: colors.textTertiary }]}>
               Personalized tasks based on your conversations
             </Text>
-
             {coachSuggestions.map(renderSuggestionItem)}
           </View>
         )}
+      </>
+    );
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Segmented Tab */}
+      <View style={[styles.tabBar, { backgroundColor: colors.surfaceMedium }]}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'tasks' && [styles.tabActive, { backgroundColor: colors.surface }]]}
+          onPress={() => setActiveTab('tasks')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={activeTab === 'tasks' ? 'list' : 'list-outline'}
+            size={16}
+            color={activeTab === 'tasks' ? colors.primary : colors.textTertiary}
+          />
+          <Text style={[styles.tabText, { color: activeTab === 'tasks' ? colors.primary : colors.textTertiary }]}>
+            Tasks
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'habits' && [styles.tabActive, { backgroundColor: colors.surface }]]}
+          onPress={() => setActiveTab('habits')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={activeTab === 'habits' ? 'repeat' : 'repeat-outline'}
+            size={16}
+            color={activeTab === 'habits' ? colors.primary : colors.textTertiary}
+          />
+          <Text style={[styles.tabText, { color: activeTab === 'habits' ? colors.primary : colors.textTertiary }]}>
+            Habits
+          </Text>
+          {recurringTodos.length > 0 && (
+            <View style={[styles.tabBadge, { backgroundColor: colors.primary + '20' }]}>
+              <Text style={[styles.tabBadgeText, { color: colors.primary }]}>{recurringTodos.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom, Spacing.lg) + 80 }
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        {renderTabContent()}
       </ScrollView>
 
       {/* Add Task Modal */}
@@ -667,7 +880,6 @@ export default function TasksScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Task Title */}
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Task</Text>
             <TextInput
               style={[styles.modalInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }]}
@@ -678,7 +890,6 @@ export default function TasksScreen() {
               autoFocus
             />
 
-            {/* Description (optional) */}
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Description (optional)</Text>
             <TextInput
               style={[styles.modalInput, styles.modalInputMultiline, { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }]}
@@ -691,7 +902,6 @@ export default function TasksScreen() {
               textAlignVertical="top"
             />
 
-            {/* Due Date */}
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>When should this be done?</Text>
             <View style={styles.dateOptionsRow}>
               <TouchableOpacity
@@ -737,7 +947,6 @@ export default function TasksScreen() {
               )}
             </View>
 
-            {/* Time Picker (only show if date is selected) */}
             {newTaskDueDate && (
               <>
                 <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>At what time?</Text>
@@ -791,7 +1000,140 @@ export default function TasksScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Calendar Date Picker Modal (for tasks without a due date) */}
+      {/* Add Habit Modal */}
+      <Modal
+        visible={addHabitModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddHabitModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setAddHabitModalVisible(false)}
+          />
+          <ScrollView style={[styles.modalContent, { backgroundColor: colors.surface }]} bounces={false}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Add Habit</Text>
+              <TouchableOpacity onPress={() => setAddHabitModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>What habit do you want to build?</Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }]}
+              placeholder="e.g. Read for 15 minutes"
+              placeholderTextColor={colors.textTertiary}
+              value={newHabitTitle}
+              onChangeText={setNewHabitTitle}
+              autoFocus
+            />
+
+            {/* Frequency */}
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Frequency</Text>
+            <View style={styles.dateOptionsRow}>
+              <TouchableOpacity
+                style={[
+                  styles.dateOption,
+                  { borderColor: colors.border },
+                  newHabitFrequency === 'daily' && { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
+                ]}
+                onPress={() => setNewHabitFrequency('daily')}
+              >
+                <Text style={[styles.dateOptionText, { color: colors.textPrimary }]}>Daily</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.dateOption,
+                  { borderColor: colors.border },
+                  newHabitFrequency === 'weekly' && { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
+                ]}
+                onPress={() => setNewHabitFrequency('weekly')}
+              >
+                <Text style={[styles.dateOptionText, { color: colors.textPrimary }]}>Weekly</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Weekly target */}
+            {newHabitFrequency === 'weekly' && (
+              <>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Times per week</Text>
+                <View style={styles.dateOptionsRow}>
+                  {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                    <TouchableOpacity
+                      key={n}
+                      style={[
+                        styles.weeklyTargetOption,
+                        { borderColor: colors.border },
+                        newHabitWeeklyTarget === n && { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
+                      ]}
+                      onPress={() => setNewHabitWeeklyTarget(n)}
+                    >
+                      <Text style={[styles.dateOptionText, { color: colors.textPrimary }]}>{n}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* Icon picker */}
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Icon</Text>
+            <View style={styles.iconGrid}>
+              {HABIT_ICONS.map((icon) => (
+                <TouchableOpacity
+                  key={icon}
+                  style={[
+                    styles.iconOption,
+                    { borderColor: colors.border },
+                    newHabitIcon === icon && { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
+                  ]}
+                  onPress={() => setNewHabitIcon(icon)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={icon as any}
+                    size={22}
+                    color={newHabitIcon === icon ? colors.primary : colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { borderColor: colors.border }]}
+                onPress={() => {
+                  setNewHabitTitle('');
+                  setNewHabitIcon('checkmark-circle-outline');
+                  setNewHabitFrequency('daily');
+                  setAddHabitModalVisible(false);
+                }}
+              >
+                <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalSubmitButton,
+                  { backgroundColor: colors.primary },
+                  !newHabitTitle.trim() && [styles.modalSubmitButtonDisabled, { backgroundColor: colors.surfaceMedium }],
+                ]}
+                onPress={handleAddHabit}
+                disabled={!newHabitTitle.trim()}
+              >
+                <Ionicons name="add" size={20} color="#FFFFFF" />
+                <Text style={[styles.modalSubmitText, { color: '#FFFFFF' }]}>Add Habit</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Calendar Date Picker Modal */}
       <Modal
         visible={!!calendarPickerTask}
         transparent
@@ -810,11 +1152,9 @@ export default function TasksScreen() {
               <Ionicons name="close" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
-
           <Text style={[styles.detailSectionLabel, { color: colors.textTertiary, marginBottom: Spacing.sm }]}>
             When should "{calendarPickerTask?.title}" be scheduled?
           </Text>
-
           <View style={styles.dateOptionsRow}>
             {[
               { label: 'Today', value: new Date().toISOString().split('T')[0] },
@@ -834,7 +1174,6 @@ export default function TasksScreen() {
               </TouchableOpacity>
             ))}
           </View>
-
           <View style={[styles.modalButtons, { marginTop: Spacing.lg }]}>
             <TouchableOpacity
               style={[styles.modalCancelButton, { borderColor: colors.border }]}
@@ -933,9 +1272,82 @@ export default function TasksScreen() {
           )}
         </View>
       </Modal>
+
+      {/* Streak Celebration Modal */}
+      <Modal
+        visible={!!streakCelebration}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissStreakCelebration}
+      >
+        <TouchableOpacity
+          style={streakStyles.backdrop}
+          activeOpacity={1}
+          onPress={dismissStreakCelebration}
+        >
+          <View style={[streakStyles.card, { backgroundColor: colors.surface }]}>
+            <Text style={streakStyles.emoji}>
+              {(streakCelebration?.streak ?? 0) >= 30 ? '🏆' : (streakCelebration?.streak ?? 0) >= 7 ? '🔥' : '⭐'}
+            </Text>
+            <Text style={[streakStyles.title, { color: colors.textPrimary }]}>
+              {streakCelebration?.streak}-Day Streak!
+            </Text>
+            <Text style={[streakStyles.subtitle, { color: colors.textSecondary }]}>
+              {streakCelebration?.title}
+            </Text>
+            <TouchableOpacity
+              style={[streakStyles.button, { backgroundColor: colors.primary }]}
+              onPress={dismissStreakCelebration}
+            >
+              <Text style={streakStyles.buttonText}>Nice</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
+
+const streakStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  card: {
+    width: '100%',
+    borderRadius: 16,
+    padding: Spacing.xl,
+    alignItems: 'center',
+  },
+  emoji: {
+    fontSize: 48,
+    marginBottom: Spacing.md,
+  },
+  title: {
+    ...Typography.h2,
+    marginBottom: Spacing.xs,
+  },
+  subtitle: {
+    ...Typography.body,
+    fontWeight: '500',
+    marginBottom: Spacing.lg,
+  },
+  button: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 10,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  buttonText: {
+    ...Typography.body,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -944,6 +1356,45 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: Spacing.lg,
+  },
+  // Tab bar
+  tabBar: {
+    flexDirection: 'row',
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderRadius: 10,
+    padding: 3,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    borderRadius: 8,
+  },
+  tabActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  tabText: {
+    ...Typography.bodySmall,
+    fontWeight: '600',
+  },
+  tabBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 8,
+    marginLeft: 2,
+  },
+  tabBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   section: {
     marginBottom: Spacing.xl,
@@ -967,7 +1418,7 @@ const styles = StyleSheet.create({
     ...Typography.bodySmall,
     color: Colors.textTertiary,
   },
-  // Task card styles
+  // Task card
   taskCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1035,11 +1486,6 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     fontSize: 11,
   },
-  taskDueDate: {
-    ...Typography.caption,
-    color: Colors.textPrimary,
-    marginTop: 4,
-  },
   taskDescription: {
     ...Typography.caption,
     color: Colors.textSecondary,
@@ -1061,13 +1507,48 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   priorityHigh: {
-    backgroundColor: '#A78BFA', // Light purple
+    backgroundColor: '#A78BFA',
   },
   priorityUrgent: {
     backgroundColor: '#FF4444',
   },
-  priorityDotCompleted: {
-    backgroundColor: Colors.success,
+  // Habit card
+  habitCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.medium,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
+    marginBottom: Spacing.sm,
+    minHeight: 56,
+  },
+  habitContent: {
+    flex: 1,
+  },
+  habitTitle: {
+    ...Typography.body,
+    fontWeight: '500',
+  },
+  habitMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginTop: 2,
+  },
+  habitStreakText: {
+    ...Typography.caption,
+    fontWeight: '600',
+  },
+  habitLongestStreak: {
+    ...Typography.caption,
+  },
+  archiveButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   // Add task button
   addTaskButton: {
@@ -1155,10 +1636,6 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textDecorationLine: 'line-through',
     flex: 1,
-  },
-  completedDate: {
-    ...Typography.caption,
-    color: Colors.textPrimary,
   },
   completedGroup: {
     marginBottom: Spacing.md,
@@ -1250,6 +1727,29 @@ const styles = StyleSheet.create({
   },
   addButtonDisabled: {
     opacity: 0.5,
+  },
+  // Icon picker
+  iconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  iconOption: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weeklyTargetOption: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Modal styles
   modalOverlay: {

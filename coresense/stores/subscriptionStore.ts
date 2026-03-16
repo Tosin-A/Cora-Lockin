@@ -61,8 +61,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       const products = await fetchSubscriptionProducts();
       if (products && products.length > 0) {
         const product = products[0];
-        const price = product.displayPrice || product.localizedPrice || null;
-        console.log('[SubscriptionStore] Product price loaded:', { displayPrice: product.displayPrice, localizedPrice: product.localizedPrice, resolved: price });
+        const price = product.displayPrice || (product as any).localizedPrice || null;
+        console.log('[SubscriptionStore] Product price loaded:', { displayPrice: product.displayPrice, localizedPrice: (product as any).localizedPrice, resolved: price });
         set({ priceString: price });
       } else {
         console.warn('[SubscriptionStore] No subscription products returned');
@@ -112,7 +112,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         return;
       }
       // Prefer the receipt from the purchase transaction (fresh), fall back to device receipt
-      const receipt = purchase.transactionReceipt || await getReceiptForVerification();
+      const receipt = (purchase as any).transactionReceipt || await getReceiptForVerification();
       if (!receipt) {
         set({ checkoutLoading: false });
         Alert.alert(
@@ -180,7 +180,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         set({ restoreLoading: false });
         return;
       }
-      const receipt = purchase.transactionReceipt || await getReceiptForVerification();
+      const receipt = (purchase as any).transactionReceipt || await getReceiptForVerification();
       if (!receipt) {
         Alert.alert('Verification Issue', 'Could not retrieve receipt. Please try again.');
         set({ restoreLoading: false });

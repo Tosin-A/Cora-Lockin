@@ -12,23 +12,32 @@ import type { Todo, CreateTodoInput, CreateCoachTodoInput } from '../types/todos
 interface TodosStore {
   // State
   todos: Todo[];
+  recurringTodos: Todo[];
   loading: boolean;
   error: string | null;
+  streakCelebration: { streak: number; title: string } | null;
 
   // Actions
   fetchTodos: () => Promise<void>;
+  fetchRecurringToday: () => Promise<void>;
+  toggleRecurringTodo: (todoId: string) => Promise<void>;
   createTodo: (input: CreateTodoInput) => Promise<Todo | null>;
   createCoachTodo: (input: CreateCoachTodoInput) => Promise<Todo | null>;
   updateTodoStatus: (todoId: string, status: Todo['status']) => Promise<boolean>;
   updateTodo: (todoId: string, updates: Partial<CreateTodoInput>) => Promise<boolean>;
   deleteTodo: (todoId: string) => Promise<boolean>;
+  archiveRecurringTodo: (todoId: string) => Promise<boolean>;
+  reorderRecurringTodos: (taskIds: string[]) => Promise<void>;
   clearError: () => void;
+  dismissStreakCelebration: () => void;
 
   // Computed helpers
   getPendingTodos: () => Todo[];
   getCompletedTodos: () => Todo[];
   getCoachTodos: () => Todo[];
   getUserTodos: () => Todo[];
+  getRecurringIncomplete: () => Todo[];
+  getRecurringComplete: () => Todo[];
 }
 
 export const useTodosStore = create<TodosStore>()(
@@ -36,8 +45,10 @@ export const useTodosStore = create<TodosStore>()(
     (set, get) => ({
       // Initial state
       todos: [],
+      recurringTodos: [],
       loading: false,
       error: null,
+      streakCelebration: null,
 
       // Actions
       fetchTodos: async () => {
@@ -61,6 +72,52 @@ export const useTodosStore = create<TodosStore>()(
         }
       },
 
+      fetchRecurringToday: async () => {
+        set({ error: null });
+        try {
+          const { data, error } = await coresenseApi.getRecurringTodosToday();
+          if (error) throw new Error(error);
+          if (data) set({ recurringTodos: data });
+        } catch (error: any) {
+          console.error('Failed to fetch recurring todos:', error);
+          set({ error: error.message || 'Failed to load recurring todos' });
+        }
+      },
+
+      toggleRecurringTodo: async (todoId: string) => {
+        const previousRecurring = get().recurringTodos;
+
+        // Optimistic update: flip completed_today immediately
+        set((state) => ({
+          recurringTodos: state.recurringTodos.map((t) =>
+            t.id === todoId ? { ...t, completed_today: !t.completed_today } : t
+          ),
+        }));
+
+        try {
+          const { data, error } = await coresenseApi.toggleRecurringTodo(todoId);
+          if (error) {
+            set({ recurringTodos: previousRecurring });
+            throw new Error(error);
+          }
+          if (data) {
+            set((state) => ({
+              recurringTodos: state.recurringTodos.map((t) =>
+                t.id === todoId ? { ...t, ...data } : t
+              ),
+            }));
+
+            // Show streak celebration if milestone reached
+            if (data.streak_milestone) {
+              set({ streakCelebration: { streak: data.streak_milestone, title: data.title } });
+            }
+          }
+        } catch (error: any) {
+          console.error('Failed to toggle recurring todo:', error);
+          set({ error: error.message || 'Failed to toggle recurring todo' });
+        }
+      },
+
       createTodo: async (input: CreateTodoInput) => {
         set({ loading: true, error: null });
 
@@ -72,6 +129,12 @@ export const useTodosStore = create<TodosStore>()(
           }
 
           if (data) {
+            if (input.is_recurring) {
+              // Add to recurring list as well
+              set((state) => ({
+                recurringTodos: [...state.recurringTodos, { ...data, completed_today: false }],
+              }));
+            }
             set((state) => ({
               todos: [data, ...state.todos],
             }));
@@ -118,7 +181,7 @@ export const useTodosStore = create<TodosStore>()(
       updateTodoStatus: async (todoId: string, status: Todo['status']) => {
         set({ error: null });
 
-        // Optimistic update - immediately update local state for responsive UI
+        // Optimistic update
         const previousTodos = get().todos;
         const now = new Date().toISOString();
         set((state) => ({
@@ -138,13 +201,11 @@ export const useTodosStore = create<TodosStore>()(
           const { data, error } = await coresenseApi.updateTodoStatus(todoId, status);
 
           if (error) {
-            // Revert optimistic update on error
             set({ todos: previousTodos });
             throw new Error(error);
           }
 
           if (data) {
-            // Update with server response to ensure consistency
             set((state) => ({
               todos: state.todos.map((todo) =>
                 todo.id === todoId ? { ...todo, ...data } : todo
@@ -199,9 +260,9 @@ export const useTodosStore = create<TodosStore>()(
           }
 
           if (success) {
-            // Remove from local state (soft delete sets status to cancelled)
             set((state) => ({
               todos: state.todos.filter((todo) => todo.id !== todoId),
+              recurringTodos: state.recurringTodos.filter((todo) => todo.id !== todoId),
             }));
             return true;
           }
@@ -214,8 +275,51 @@ export const useTodosStore = create<TodosStore>()(
         }
       },
 
+      archiveRecurringTodo: async (todoId: string) => {
+        set({ error: null });
+        const previous = get().recurringTodos;
+
+        // Optimistic remove
+        set((state) => ({
+          recurringTodos: state.recurringTodos.filter((t) => t.id !== todoId),
+        }));
+
+        try {
+          const { success, error } = await coresenseApi.deleteTodo(todoId);
+          if (error) {
+            set({ recurringTodos: previous });
+            throw new Error(error);
+          }
+          return success;
+        } catch (error: any) {
+          console.error('Failed to archive recurring todo:', error);
+          set({ error: error.message || 'Failed to archive' });
+          return false;
+        }
+      },
+
+      reorderRecurringTodos: async (taskIds: string[]) => {
+        // Optimistic reorder
+        const reordered = taskIds
+          .map((id) => get().recurringTodos.find((t) => t.id === id))
+          .filter(Boolean) as Todo[];
+        set({ recurringTodos: reordered });
+
+        try {
+          await coresenseApi.reorderRecurringTodos(taskIds);
+        } catch (error: any) {
+          console.error('Failed to reorder:', error);
+          // Refetch on error
+          get().fetchRecurringToday();
+        }
+      },
+
       clearError: () => {
         set({ error: null });
+      },
+
+      dismissStreakCelebration: () => {
+        set({ streakCelebration: null });
       },
 
       // Computed helpers
@@ -238,12 +342,21 @@ export const useTodosStore = create<TodosStore>()(
         const { todos } = get();
         return todos.filter((todo) => todo.created_by === 'user');
       },
+
+      getRecurringIncomplete: () => {
+        return get().recurringTodos.filter((t) => !t.completed_today);
+      },
+
+      getRecurringComplete: () => {
+        return get().recurringTodos.filter((t) => t.completed_today);
+      },
     }),
     {
       name: 'todos-store',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        todos: state.todos.slice(0, 50), // Keep last 50 todos
+        todos: state.todos.slice(0, 50),
+        recurringTodos: state.recurringTodos.slice(0, 100),
       }),
     }
   )

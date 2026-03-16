@@ -3,7 +3,7 @@
  * Displays steps, sleep, and health metrics with charts
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -98,36 +98,44 @@ export default function HealthScreen() {
   };
 
   // Prepare chart data for steps
-  const stepsChartData = {
-    labels: weeklySteps
-      .slice(-7)
-      .map((item) => format(item.date, 'EEE'))
-      .slice(-7),
-    datasets: [
-      {
-        data: weeklySteps.slice(-7).map((item) => item.steps),
-        color: (opacity = 1) => Colors.primary,
-        strokeWidth: 2,
-      },
-    ],
-  };
+  const stepsChartData = useMemo(() => {
+    const items = weeklySteps.slice(-7);
+    const data = items.map((item) => Number(item.steps) || 0);
+    const hasData = data.some((v) => v > 0);
+    return {
+      labels: items.length > 0 ? items.map((item) => format(item.date, 'EEE')) : [''],
+      datasets: [
+        {
+          data: hasData ? data : [0, 1],
+          color: (opacity = 1) => Colors.primary,
+          strokeWidth: 2,
+        },
+      ],
+    };
+  }, [weeklySteps]);
 
   // Prepare chart data for sleep
-  const sleepChartData = {
-    labels: weeklySleep
-      .slice(-7)
-      .map((item) => format(item.date, 'EEE'))
-      .slice(-7),
-    datasets: [
-      {
-        data: weeklySleep.slice(-7).map((item) => item.hours),
-        color: (opacity = 1) => Colors.accent,
-        strokeWidth: 2,
-      },
-    ],
-  };
+  const sleepChartData = useMemo(() => {
+    const items = weeklySleep.slice(-7);
+    const data = items.map((item) => Number(item.hours) || 0);
+    const hasData = data.some((v) => v > 0);
+    return {
+      labels: items.length > 0 ? items.map((item) => format(item.date, 'EEE')) : [''],
+      datasets: [
+        {
+          data: hasData ? data : [0, 1],
+          color: (opacity = 1) => Colors.accent,
+          strokeWidth: 2,
+        },
+      ],
+    };
+  }, [weeklySleep]);
 
-  const chartConfig = {
+  // Check if charts have real data to display
+  const hasStepsData = weeklySteps.length > 0 && weeklySteps.some((item) => Number(item.steps) > 0);
+  const hasSleepData = weeklySleep.length > 0 && weeklySleep.some((item) => Number(item.hours) > 0);
+
+  const chartConfig = useMemo(() => ({
     backgroundColor: Colors.surface,
     backgroundGradientFrom: Colors.surface,
     backgroundGradientTo: Colors.surface,
@@ -142,7 +150,7 @@ export default function HealthScreen() {
       strokeWidth: '2',
       stroke: Colors.primary,
     },
-  };
+  }), []);
 
   if (Platform.OS !== 'ios') {
     return (
@@ -236,12 +244,12 @@ export default function HealthScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Weekly Averages</Text>
         <View style={styles.statsGrid}>
-          <Card variant="purple" style={styles.averageCard}>
+          <Card style={styles.averageCard}>
             <Ionicons name="trending-up" size={24} color={Colors.textPrimary} />
             <Text style={styles.averageValue}>{weeklyStepsAvg.toLocaleString()}</Text>
             <Text style={styles.averageLabel}>Steps/day</Text>
           </Card>
-          <Card variant="purple" style={styles.averageCard}>
+          <Card style={styles.averageCard}>
             <Ionicons name="moon" size={24} color={Colors.textPrimary} />
             <Text style={styles.averageValue}>{weeklySleepAvg.toFixed(1)}h</Text>
             <Text style={styles.averageLabel}>Sleep/night</Text>
@@ -250,16 +258,17 @@ export default function HealthScreen() {
       </View>
 
       {/* Steps Chart */}
-      {weeklySteps.length > 0 && (
+      {hasStepsData && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Steps (Last 7 Days)</Text>
-          <Card variant="purple" style={styles.chartCard}>
+          <Card style={styles.chartCard}>
             <LineChart
               data={stepsChartData}
               width={chartWidth - Spacing.md * 2}
               height={220}
               chartConfig={chartConfig}
               bezier
+              fromZero
               style={styles.chart}
               yAxisSuffix=""
               yAxisInterval={1}
@@ -269,16 +278,17 @@ export default function HealthScreen() {
       )}
 
       {/* Sleep Chart */}
-      {weeklySleep.length > 0 && (
+      {hasSleepData && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Sleep Duration (Last 7 Days)</Text>
-          <Card variant="purple" style={styles.chartCard}>
+          <Card style={styles.chartCard}>
             <LineChart
               data={sleepChartData}
               width={chartWidth - Spacing.md * 2}
               height={220}
               chartConfig={chartConfig}
               bezier
+              fromZero
               style={styles.chart}
               yAxisSuffix="h"
               yAxisInterval={1}

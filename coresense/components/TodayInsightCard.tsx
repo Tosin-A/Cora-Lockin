@@ -29,7 +29,7 @@ const categoryIcons: Record<string, string> = {
   custom: 'bulb',
 };
 
-export default function TodayInsightCard({
+function TodayInsightCard({
   insight,
   onExpand,
   onDismiss,
@@ -83,6 +83,8 @@ export default function TodayInsightCard({
     </TouchableOpacity>
   );
 }
+
+export default React.memo(TodayInsightCard);
 
 const styles = StyleSheet.create({
   container: {

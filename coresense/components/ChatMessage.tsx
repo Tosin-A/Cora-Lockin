@@ -20,7 +20,7 @@ interface ChatMessageProps {
   userAvatar?: string;
 }
 
-export default function ChatMessageComponent({
+function ChatMessageComponent({
   message,
   isLast,
   isGrouped = false,
@@ -81,6 +81,8 @@ export default function ChatMessageComponent({
     </View>
   );
 }
+
+export default React.memo(ChatMessageComponent);
 
 const styles = StyleSheet.create({
   container: {

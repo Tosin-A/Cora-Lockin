@@ -51,31 +51,24 @@ export default function CoachChatScreen({ navigation }: any) {
   const { colors } = useTheme();
   const flatListRef = useRef<FlatList>(null);
 
-  // Store hooks
-  const {
-    messages,
-    loading,
-    sending,
-    typing,
-    quickActions,
-    sendMessage,
-    loadChatHistory,
-    loadCachedMessages,
-    completeQuickAction,
-    pendingReconciliation,
-    hasPendingReconciliation,
-    pendingCalendarEvent,
-    clearPendingCalendarEvent,
-  } = useChatStore();
+  // Store hooks — fine-grained selectors to avoid unnecessary re-renders
+  const messages = useChatStore((s) => s.messages);
+  const loading = useChatStore((s) => s.loading);
+  const sending = useChatStore((s) => s.sending);
+  const typing = useChatStore((s) => s.typing);
+  const quickActions = useChatStore((s) => s.quickActions);
+  const sendMessage = useChatStore((s) => s.sendMessage);
+  const loadChatHistory = useChatStore((s) => s.loadChatHistory);
+  const loadCachedMessages = useChatStore((s) => s.loadCachedMessages);
+  const completeQuickAction = useChatStore((s) => s.completeQuickAction);
+  const hasPendingReconciliation = useChatStore((s) => s.hasPendingReconciliation);
+  const pendingCalendarEvent = useChatStore((s) => s.pendingCalendarEvent);
+  const clearPendingCalendarEvent = useChatStore((s) => s.clearPendingCalendarEvent);
 
-  const { profile } = useUserStore();
-  const { generateInsightFromChat } = useInsightsStore();
-  const {
-    messagesRemaining,
-    dailyRemaining,
-    weeklyRemaining,
-    loadUsageStats,
-  } = useMessageLimitStore();
+  const profile = useUserStore((s) => s.profile);
+  const generateInsightFromChat = useInsightsStore((s) => s.generateInsightFromChat);
+  const messagesRemaining = useMessageLimitStore((s) => s.messagesRemaining);
+  const loadUsageStats = useMessageLimitStore((s) => s.loadUsageStats);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [calendarAdding, setCalendarAdding] = useState(false);
@@ -83,6 +76,7 @@ export default function CoachChatScreen({ navigation }: any) {
   const skeletonPulse = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
+    if (!loading || messages.length > 0) return;
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(skeletonPulse, { toValue: 0.6, duration: 900, useNativeDriver: true }),
@@ -91,7 +85,7 @@ export default function CoachChatScreen({ navigation }: any) {
     );
     anim.start();
     return () => anim.stop();
-  }, []);
+  }, [loading, messages.length]);
 
   useEffect(() => {
     loadCachedMessages();
@@ -187,11 +181,13 @@ export default function CoachChatScreen({ navigation }: any) {
     return result;
   }, [messages]);
 
+  const prevCountRef = useRef(0);
   useEffect(() => {
-    if (displayMessages.length > 0 && flatListRef.current) {
-      flatListRef.current?.scrollToEnd({ animated: true });
+    if (displayMessages.length > prevCountRef.current && flatListRef.current) {
+      flatListRef.current.scrollToEnd({ animated: true });
     }
-  }, [displayMessages]);
+    prevCountRef.current = displayMessages.length;
+  }, [displayMessages.length]);
 
   const handleSendMessage = useCallback(async (messageText: string) => {
     try {
@@ -457,6 +453,9 @@ export default function CoachChatScreen({ navigation }: any) {
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            maxToRenderPerBatch={15}
+            windowSize={10}
+            initialNumToRender={20}
             ListEmptyComponent={renderEmptyChat}
             ListFooterComponent={renderTypingIndicator}
           />

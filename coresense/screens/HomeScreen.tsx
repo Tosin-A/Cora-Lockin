@@ -40,7 +40,9 @@ import { useHealthStore } from '../stores/healthStore';
 import { useTodosStore } from '../stores/todosStore';
 import { useInsightsStore } from '../stores/insightsStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { coresenseApi, HomeData } from '../utils/coresenseApi';
+import { coresenseApi, HomeData, WeeklyRecap } from '../utils/coresenseApi';
+
+import WeeklyRecapCard from '../components/WeeklyRecapCard';
 import type { Todo } from '../types/todos';
 import { InsightType } from '../types/insights';
 
@@ -244,15 +246,35 @@ const taskCardStyles = StyleSheet.create({
 });
 
 export default function HomeScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { user } = useAuthStore();
-  const { profile, fetchProfile } = useUserStore();
-  const { initialize: initializeHealth, syncToSupabase } = useHealthStore();
-  const { fetchTodos, updateTodoStatus, getPendingTodos, getCompletedTodos, createTodo } = useTodosStore();
-  const { healthInsights, fetchHealthInsights } = useInsightsStore();
-  const { logBatchMetrics, hasCheckedInToday, loadLastCheckInDate } = useMetricsStore();
+  const user = useAuthStore((s) => s.user);
+  const profile = useUserStore((s) => s.profile);
+  const fetchProfile = useUserStore((s) => s.fetchProfile);
+  const initializeHealth = useHealthStore((s) => s.initialize);
+  const syncToSupabase = useHealthStore((s) => s.syncToSupabase);
+  const fetchTodos = useTodosStore((s) => s.fetchTodos);
+  const updateTodoStatus = useTodosStore((s) => s.updateTodoStatus);
+  const getPendingTodos = useTodosStore((s) => s.getPendingTodos);
+  const getCompletedTodos = useTodosStore((s) => s.getCompletedTodos);
+  const createTodo = useTodosStore((s) => s.createTodo);
+  const healthInsights = useInsightsStore((s) => s.healthInsights);
+  const fetchHealthInsights = useInsightsStore((s) => s.fetchHealthInsights);
+  const logBatchMetrics = useMetricsStore((s) => s.logBatchMetrics);
+  const hasCheckedInToday = useMetricsStore((s) => s.hasCheckedInToday);
+  const loadLastCheckInDate = useMetricsStore((s) => s.loadLastCheckInDate);
+  const recurringTodos = useTodosStore((s) => s.recurringTodos);
+  const fetchRecurringToday = useTodosStore((s) => s.fetchRecurringToday);
+  const toggleRecurringTodo = useTodosStore((s) => s.toggleRecurringTodo);
+  const getRecurringIncomplete = useTodosStore((s) => s.getRecurringIncomplete);
+  const getRecurringComplete = useTodosStore((s) => s.getRecurringComplete);
+  const streakCelebration = useTodosStore((s) => s.streakCelebration);
+  const dismissStreakCelebration = useTodosStore((s) => s.dismissStreakCelebration);
+
+  // Weekly recap state (shown on Mondays)
+  const [weeklyRecap, setWeeklyRecap] = useState<WeeklyRecap | null>(null);
+  const [recapDismissed, setRecapDismissed] = useState(true);
 
   // Real data state
   const [homeData, setHomeData] = useState<HomeData | null>(null);
@@ -407,11 +429,26 @@ export default function HomeScreen() {
       // Fire all data fetches in parallel — they are independent
       fetchData();
       fetchTodos();
+      fetchRecurringToday();
       if (user) {
         syncToSupabase(user.id);
       }
       fetchHealthInsights();
-    }, [fetchData, fetchTodos, fetchHealthInsights, syncToSupabase, user, recordDailyStreak, pickGreeting])
+
+      // Load weekly recap on Mondays
+      const today = new Date();
+      if (today.getDay() === 1) {
+        const weekKey = `recap_dismissed_${today.getFullYear()}_${Math.ceil((today.getTime() - new Date(today.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))}`;
+        AsyncStorage.getItem(weekKey).then((val) => {
+          if (!val) {
+            setRecapDismissed(false);
+            coresenseApi.getWeeklyRecap(7).then(({ data }) => {
+              if (data) setWeeklyRecap(data);
+            });
+          }
+        });
+      }
+    }, [fetchData, fetchTodos, fetchRecurringToday, fetchHealthInsights, syncToSupabase, user, recordDailyStreak, pickGreeting])
   );
 
   useEffect(() => {
@@ -692,6 +729,22 @@ export default function HomeScreen() {
         </View>
       </Animated.View>
 
+      {/* Weekly Recap Card - Mondays only */}
+      {!recapDismissed && weeklyRecap && (
+        <View style={styles.section}>
+          <WeeklyRecapCard
+            recap={weeklyRecap}
+            onPress={() => navigation.navigate('Progress' as any)}
+            onDismiss={() => {
+              setRecapDismissed(true);
+              const today = new Date();
+              const weekKey = `recap_dismissed_${today.getFullYear()}_${Math.ceil((today.getTime() - new Date(today.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))}`;
+              AsyncStorage.setItem(weekKey, 'true');
+            }}
+          />
+        </View>
+      )}
+
       {/* From Your Coach - Primary entry point to chat */}
       <View style={styles.section}>
         <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>FROM YOUR COACH</Text>
@@ -732,6 +785,28 @@ export default function HomeScreen() {
 
 
 
+      {/* Daily Check-In Card */}
+      {!hasCheckedInToday() && (
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={[styles.checkInCard, { backgroundColor: colors.primaryMuted, borderColor: colors.borderPurple }]}
+            onPress={() => setShowQuickLog(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.checkInCardContent}>
+              <Ionicons name="pulse-outline" size={24} color={colors.primary} />
+              <View style={styles.checkInCardText}>
+                <Text style={[styles.checkInCardTitle, { color: colors.textPrimary }]}>Daily Check-In</Text>
+                <Text style={[styles.checkInCardSubtitle, { color: colors.textSecondary }]}>
+                  Log your mood, energy, and sleep
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Today's Insight Card - Real Data */}
       <View style={styles.section}>
         <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>TODAY'S INSIGHT</Text>
@@ -755,6 +830,76 @@ export default function HomeScreen() {
               <Text style={[styles.emptyCardSubtext, { color: colors.textTertiary }]}>Keep using the app to unlock personalized insights</Text>
             </View>
           </Card>
+        )}
+      </View>
+
+      {/* Daily Recurring Tasks Section - Always visible */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>DAILY HABITS</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Tasks' as any)}>
+            <Text style={[styles.viewAllText, { color: colors.primary }]}>Manage</Text>
+          </TouchableOpacity>
+        </View>
+
+        {recurringTodos.length > 0 ? (
+          <>
+            {getRecurringIncomplete().slice(0, 4).map((todo) => (
+              <TouchableOpacity
+                key={todo.id}
+                style={[styles.habitRowHome, { borderBottomColor: colors.border }]}
+                onPress={() => toggleRecurringTodo(todo.id)}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={todo.completed_today ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={22}
+                  color={todo.completed_today ? colors.success : colors.textTertiary}
+                />
+                {todo.icon && (
+                  <Ionicons
+                    name={todo.icon as any}
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                )}
+                <Text style={[styles.habitRowTitle, { color: colors.textPrimary }]}>{todo.title}</Text>
+                {todo.frequency === 'weekly' && todo.weekly_completed != null ? (
+                  <Text style={[styles.habitRowStreak, { color: colors.primary }]}>{todo.weekly_completed}/{todo.weekly_target ?? 7}</Text>
+                ) : (todo.streak_count ?? 0) > 0 ? (
+                  <Text style={[styles.habitRowStreak, { color: colors.primary }]}>{todo.streak_count}d</Text>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+
+            {getRecurringComplete().length > 0 && getRecurringIncomplete().length === 0 && (
+              <View style={styles.allHabitsDone}>
+                <Ionicons name="checkmark-done" size={18} color={colors.success} />
+                <Text style={[styles.allHabitsDoneText, { color: colors.success }]}>
+                  All {getRecurringComplete().length} done for today
+                </Text>
+              </View>
+            )}
+
+            {getRecurringComplete().length > 0 && getRecurringIncomplete().length > 0 && (
+              <Text style={[styles.habitCompletedCount, { color: colors.textTertiary }]}>
+                {getRecurringComplete().length} completed
+              </Text>
+            )}
+          </>
+        ) : (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Tasks' as any)}
+            activeOpacity={0.8}
+          >
+            <Card style={styles.emptyCard}>
+              <View style={styles.emptyCardContent}>
+                <Ionicons name="repeat-outline" size={32} color={colors.textTertiary} />
+                <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>No daily habits yet</Text>
+                <Text style={[styles.emptyCardSubtext, { color: colors.textTertiary }]}>Tap to go to Tasks and create a recurring habit</Text>
+              </View>
+            </Card>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -893,19 +1038,36 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Check In Button - inline, scrolls with content */}
-      {!hasCheckedInToday() && (
-        <View style={styles.checkInContainer}>
+      {/* Quick Access Row */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>EXPLORE</Text>
+        <View style={styles.quickAccessRow}>
           <TouchableOpacity
-            style={[styles.fab, { backgroundColor: colors.primary }]}
-            onPress={() => setShowQuickLog(true)}
-            activeOpacity={0.9}
+            style={[styles.quickAccessItem, { backgroundColor: colors.surface }]}
+            onPress={() => navigation.navigate('Tasks' as any)}
+            activeOpacity={0.7}
           >
-            <Ionicons name="add" size={24} color="#FFFFFF" />
-            <Text style={styles.fabText}>Check In</Text>
+            <Ionicons name="list-outline" size={22} color={colors.primary} />
+            <Text style={[styles.quickAccessLabel, { color: colors.textPrimary }]}>Tasks</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickAccessItem, { backgroundColor: colors.surface }]}
+            onPress={() => navigation.navigate('Progress' as any)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trending-up-outline" size={22} color={colors.primary} />
+            <Text style={[styles.quickAccessLabel, { color: colors.textPrimary }]}>Progress</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickAccessItem, { backgroundColor: colors.surface }]}
+            onPress={() => navigation.navigate('Health' as any)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="heart-outline" size={22} color={colors.primary} />
+            <Text style={[styles.quickAccessLabel, { color: colors.textPrimary }]}>Health</Text>
           </TouchableOpacity>
         </View>
-      )}
+      </View>
 
       {/* Add Task Modal */}
       <Modal
@@ -1146,9 +1308,97 @@ export default function HomeScreen() {
         onClose={() => setShowQuickLog(false)}
         onSubmit={handleQuickLogSubmit}
       />
+
+      {/* Streak Celebration Modal */}
+      <Modal
+        visible={!!streakCelebration}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissStreakCelebration}
+      >
+        <TouchableOpacity
+          style={streakModalStyles.backdrop}
+          activeOpacity={1}
+          onPress={dismissStreakCelebration}
+        >
+          <View style={[streakModalStyles.card, { backgroundColor: colors.surface }]}>
+            <Text style={streakModalStyles.emoji}>
+              {(streakCelebration?.streak ?? 0) >= 30 ? '🏆' : (streakCelebration?.streak ?? 0) >= 7 ? '🔥' : '⭐'}
+            </Text>
+            <Text style={[streakModalStyles.title, { color: colors.textPrimary }]}>
+              {streakCelebration?.streak}-Day Streak!
+            </Text>
+            <Text style={[streakModalStyles.subtitle, { color: colors.textSecondary }]}>
+              {streakCelebration?.title}
+            </Text>
+            <Text style={[streakModalStyles.message, { color: colors.textTertiary }]}>
+              {(streakCelebration?.streak ?? 0) >= 30
+                ? 'Incredible consistency. You\'re unstoppable.'
+                : (streakCelebration?.streak ?? 0) >= 14
+                  ? 'Two weeks strong. This is becoming a real habit.'
+                  : (streakCelebration?.streak ?? 0) >= 7
+                    ? 'A full week! You\'re building momentum.'
+                    : 'Great start! Keep it going.'}
+            </Text>
+            <TouchableOpacity
+              style={[streakModalStyles.button, { backgroundColor: colors.primary }]}
+              onPress={dismissStreakCelebration}
+            >
+              <Text style={streakModalStyles.buttonText}>Nice</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
+
+const streakModalStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  card: {
+    width: '100%',
+    borderRadius: 16,
+    padding: Spacing.xl,
+    alignItems: 'center',
+  },
+  emoji: {
+    fontSize: 48,
+    marginBottom: Spacing.md,
+  },
+  title: {
+    ...Typography.h2,
+    marginBottom: Spacing.xs,
+  },
+  subtitle: {
+    ...Typography.body,
+    fontWeight: '500',
+    marginBottom: Spacing.md,
+  },
+  message: {
+    ...Typography.bodySmall,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+    lineHeight: 20,
+  },
+  button: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 10,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  buttonText: {
+    ...Typography.body,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+});
 
 const styles = StyleSheet.create({
   screenContainer: {
@@ -1644,5 +1894,76 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: 'white',
     fontWeight: '600',
+  },
+  // Check-in card styles
+  checkInCard: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.medium,
+    borderWidth: 1,
+  },
+  checkInCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  checkInCardText: {
+    flex: 1,
+  },
+  checkInCardTitle: {
+    ...Typography.body,
+    fontWeight: '600',
+  },
+  checkInCardSubtitle: {
+    ...Typography.bodySmall,
+    marginTop: 2,
+  },
+  // Habits home section styles
+  habitRowHome: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    minHeight: 48,
+    gap: Spacing.md,
+  },
+  habitRowTitle: {
+    ...Typography.body,
+    flex: 1,
+    fontWeight: '500',
+  },
+  habitRowStreak: {
+    ...Typography.caption,
+    fontWeight: '600',
+  },
+  allHabitsDone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+  },
+  allHabitsDoneText: {
+    ...Typography.bodySmall,
+    fontWeight: '500',
+  },
+  habitCompletedCount: {
+    ...Typography.caption,
+    textAlign: 'center',
+    paddingTop: Spacing.sm,
+  },
+  quickAccessRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  quickAccessItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    borderRadius: 10,
+    gap: Spacing.xs,
+  },
+  quickAccessLabel: {
+    ...Typography.bodySmall,
+    fontWeight: '500',
   },
 });

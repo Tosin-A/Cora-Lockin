@@ -2,7 +2,7 @@
   "expo": {
     "name": "CoreSense",
     "slug": "coresense",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "splash": {
@@ -31,7 +31,7 @@
         "com.apple.developer.healthkit.access": [],
         "aps-environment": "production"
       },
-      "buildNumber": "3"
+      "buildNumber": "4"
     },
     "android": {
       "adaptiveIcon": {

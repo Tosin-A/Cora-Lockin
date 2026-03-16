@@ -40,6 +40,9 @@ import SettingsScreen from '../screens/SettingsScreen';
 import AccountScreen from '../screens/AccountScreen';
 import CoachChatScreen from '../screens/CoachChatScreen';
 import TasksScreen from '../screens/TasksScreen';
+import HealthScreen from '../screens/HealthScreen';
+
+import ProgressScreen from '../screens/ProgressScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 
 const Stack = createStackNavigator();
@@ -453,32 +456,36 @@ export default function AppNavigator() {
     };
   }, [checkAuth]);
 
-  // Initialize HealthKit, notifications, and prefetch insights on component mount if user is already authenticated
+  // Unified auth transition + mount initialization
+  // Handles both initial mount (prevRef === null) and auth state changes
   useEffect(() => {
     let notificationCleanup: (() => void) | null = null;
+    const wasAuthenticated = prevIsAuthenticatedRef.current;
+    const isInitialMount = wasAuthenticated === null;
+    const justBecameAuthenticated = isInitialMount || (!wasAuthenticated && isAuthenticated);
 
-    if (isAuthenticated) {
-      console.log('[AppNavigator] User already authenticated, initializing services...');
+    if (isAuthenticated && justBecameAuthenticated) {
+      console.log('[AppNavigator] Initializing services (initial=%s)...', isInitialMount);
 
+      // Core services — run on both initial mount and auth transition
       warmupServer();
       useChatStore.getState().loadChatHistory({ silent: true });
       initIAP();
       useSubscriptionStore.getState().loadSubscriptionStatus();
 
-      // Initialize HealthKit
+      // HealthKit — single initialization
       initializeHealthKit()
         .then((status) => {
-          console.log('[AppNavigator] HealthKit initialized on mount:', status);
+          console.log('[AppNavigator] HealthKit initialized:', status);
           if (!status.permissionsGranted) {
-            console.warn('[AppNavigator] HealthKit permissions not granted on mount');
+            console.warn('[AppNavigator] HealthKit permissions not granted');
           }
         })
         .catch((error) => {
-          console.error('[AppNavigator] HealthKit initialization failed on mount:', error);
+          console.error('[AppNavigator] HealthKit initialization failed:', error);
         });
 
-      // Initialize push notifications
-      console.log('[AppNavigator] Setting up notification handlers...');
+      // Notifications — setup handlers + register
       setupNotificationHandlers()
         .then((cleanup) => {
           notificationCleanup = cleanup;
@@ -488,25 +495,20 @@ export default function AppNavigator() {
           console.error('[AppNavigator] Notification handler setup failed:', error);
         });
 
-    }
+      registerForPushNotifications()
+        .then((token) => {
+          if (token) {
+            console.log('[AppNavigator] Push notifications registered');
+          } else {
+            console.log('[AppNavigator] Push notifications not available or denied');
+          }
+        })
+        .catch((error) => {
+          console.error('[AppNavigator] Push notification registration failed:', error);
+        });
 
-    return () => {
-      if (notificationCleanup) {
-        notificationCleanup();
-      }
-    };
-  }, [isAuthenticated]);
-
-  // Track auth state changes for logging and initialize services
-  useEffect(() => {
-    if (prevIsAuthenticatedRef.current !== null && prevIsAuthenticatedRef.current !== isAuthenticated) {
-      console.log('[AppNavigator] Auth state changed:', {
-        from: prevIsAuthenticatedRef.current ? 'authenticated' : 'unauthenticated',
-        to: isAuthenticated ? 'authenticated' : 'unauthenticated',
-      });
-      
-      if (isAuthenticated) {
-        // Identify user in PostHog
+      // PostHog identify + clear loading (only on auth transition, not initial mount)
+      if (!isInitialMount) {
         const { user } = useAuthStore.getState();
         if (user && posthog) {
           posthog.identify(user.id, {
@@ -521,39 +523,19 @@ export default function AppNavigator() {
           console.log('[AppNavigator] Clearing loading state after authentication');
           useAuthStore.setState({ isLoading: false });
         }
-
-        // Initialize HealthKit when user becomes authenticated
-        console.log('[AppNavigator] Initializing HealthKit...');
-        initializeHealthKit()
-          .then((status) => {
-            console.log('[AppNavigator] HealthKit initialized:', status);
-            if (!status.permissionsGranted) {
-              console.warn('[AppNavigator] HealthKit permissions not granted');
-            }
-          })
-          .catch((error) => {
-            console.error('[AppNavigator] HealthKit initialization failed:', error);
-          });
-
-        // Register for push notifications when user becomes authenticated
-        console.log('[AppNavigator] Registering for push notifications...');
-        registerForPushNotifications()
-          .then((token) => {
-            if (token) {
-              console.log('[AppNavigator] Push notifications registered');
-            } else {
-              console.log('[AppNavigator] Push notifications not available or denied');
-            }
-          })
-          .catch((error) => {
-            console.error('[AppNavigator] Push notification registration failed:', error);
-          });
-      } else {
-        // Reset PostHog on sign-out
-        posthog?.reset();
       }
+    } else if (!isInitialMount && !isAuthenticated && wasAuthenticated) {
+      // Sign-out
+      posthog?.reset();
     }
+
     prevIsAuthenticatedRef.current = isAuthenticated;
+
+    return () => {
+      if (notificationCleanup) {
+        notificationCleanup();
+      }
+    };
   }, [isAuthenticated, posthog]);
 
   // Set navigation ref for notification deep linking
@@ -605,6 +587,28 @@ export default function AppNavigator() {
                 },
                 headerTintColor: Colors.textPrimary,
                 headerTitle: 'Tasks',
+                headerBackTitle: 'Home',
+              }}
+            />
+            <Stack.Screen
+              name="Health"
+              component={HealthScreen}
+              options={{
+                headerShown: true,
+                headerStyle: { backgroundColor: Colors.background },
+                headerTintColor: Colors.textPrimary,
+                headerTitle: 'Health',
+                headerBackTitle: 'Home',
+              }}
+            />
+<Stack.Screen
+              name="Progress"
+              component={ProgressScreen}
+              options={{
+                headerShown: true,
+                headerStyle: { backgroundColor: Colors.background },
+                headerTintColor: Colors.textPrimary,
+                headerTitle: 'Progress',
                 headerBackTitle: 'Home',
               }}
             />

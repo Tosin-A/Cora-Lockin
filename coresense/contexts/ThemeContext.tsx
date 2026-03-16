@@ -14,7 +14,7 @@ import {
   DarkColors,
 } from '../constants/theme';
 
-type ColorsType = typeof LightColors;
+type ColorsType = typeof LightColors | typeof DarkColors;
 type ShadowsType = ReturnType<typeof getShadows>;
 type GlassmorphismType = ReturnType<typeof getGlassmorphism>;
 

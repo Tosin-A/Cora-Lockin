@@ -78,7 +78,7 @@ export const purchaseProSubscription = async (): Promise<Purchase | null> => {
     throw new Error('IAP_PRODUCT_NOT_FOUND');
   }
 
-  console.log('[IAP] Products fetched:', products.map((p) => ({ id: p.productId, price: p.localizedPrice })));
+  console.log('[IAP] Products fetched:', products.map((p: any) => ({ id: p.productId, price: p.localizedPrice })));
   console.log('[IAP] Starting purchase for', IAP_PRODUCT_IDS.PRO_MONTHLY);
 
   return new Promise((resolve, reject) => {
@@ -107,7 +107,7 @@ export const purchaseProSubscription = async (): Promise<Purchase | null> => {
 
     purchaseListener = purchaseUpdatedListener((purchase) => {
       console.log('[IAP] purchaseUpdatedListener fired:', purchase.productId, purchase.transactionId);
-      if (IAP_SUBSCRIPTION_SKUS.includes(purchase.productId)) {
+      if ((IAP_SUBSCRIPTION_SKUS as readonly string[]).includes(purchase.productId)) {
         if (!settled) {
           settled = true;
           clearTimeout(timeout);
@@ -124,15 +124,15 @@ export const purchaseProSubscription = async (): Promise<Purchase | null> => {
       if (settled) return;
       settled = true;
 
-      if (error.code === 'E_USER_CANCELLED') {
+      if ((error.code as string) === 'E_USER_CANCELLED') {
         resolve(null);
         return;
       }
       // "Item already owned" = user has active subscription, restore it
-      if (error.code === 'E_ALREADY_OWNED' || /already own|already bought/i.test(error.message || '')) {
+      if ((error.code as string) === 'E_ALREADY_OWNED' || /already own|already bought/i.test(error.message || '')) {
         try {
           const purchases = await getAvailablePurchases({ onlyIncludeActiveItemsIOS: true });
-          const proPurchase = purchases?.find((p) => IAP_SUBSCRIPTION_SKUS.includes(p.productId));
+          const proPurchase = purchases?.find((p) => (IAP_SUBSCRIPTION_SKUS as readonly string[]).includes(p.productId));
           if (proPurchase) {
             resolve(proPurchase);
             return;
@@ -186,7 +186,7 @@ export const restoreProPurchase = async (): Promise<Purchase | null> => {
   try {
     await initConnection();
     const purchases = await getAvailablePurchases({ onlyIncludeActiveItemsIOS: true });
-    return purchases?.find((p) => IAP_SUBSCRIPTION_SKUS.includes(p.productId)) ?? null;
+    return purchases?.find((p) => (IAP_SUBSCRIPTION_SKUS as readonly string[]).includes(p.productId)) ?? null;
   } catch {
     return null;
   }
@@ -199,6 +199,6 @@ export const finishIAPTransaction = async (purchase: Purchase): Promise<void> =>
 };
 
 export const showManageSubscriptionsIOS = (): Promise<void> =>
-  Platform.OS === 'ios' ? showManageSubscriptionsIOSNative() : Promise.resolve();
+  Platform.OS === 'ios' ? showManageSubscriptionsIOSNative().then(() => {}) : Promise.resolve();
 
 export { IAP_PRODUCT_IDS };

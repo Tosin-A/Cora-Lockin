@@ -18,6 +18,8 @@ import { Card } from '../components/Card';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { useUserStore } from '../stores/userStore';
 import { useAuthStore } from '../stores/authStore';
+import { coresenseApi } from '../utils/coresenseApi';
+import { useTodosStore } from '../stores/todosStore';
 
 const { width } = Dimensions.get('window');
 const GOALS = ['Study', 'Health', 'Habits', 'Sleep', 'Focus'];
@@ -57,6 +59,16 @@ export default function OnboardingScreen() {
         quiet_hours_start: quietHoursStart,
         quiet_hours_end: quietHoursEnd,
       });
+
+      // Fire-and-forget: send welcome message + create starter recurring tasks
+      coresenseApi.completeOnboarding(goals, style).then(({ data }) => {
+        if (data?.starter_habits?.length) {
+          useTodosStore.getState().fetchRecurringToday();
+        }
+      }).catch((err) => {
+        console.warn('Onboarding completion call failed:', err);
+      });
+
       // Navigation handled by AppNavigator
     } catch (error) {
       console.error('Onboarding error:', error);
@@ -72,7 +84,7 @@ export default function OnboardingScreen() {
             <Text style={styles.stepSubtitle}>
               Let's set up your coach
             </Text>
-            <Card variant="purple" style={styles.welcomeCard}>
+            <Card style={styles.welcomeCard}>
               <Text style={styles.welcomeText}>
                 Your personal coach is ready to help you stay on track with your goals.
               </Text>

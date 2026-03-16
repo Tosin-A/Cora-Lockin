@@ -37,6 +37,17 @@ AI-powered personal coaching platform with React Native mobile app and FastAPI b
 │   ├── navigation/        # App routing
 │   ├── constants/         # Theme & config
 │   └── types/             # TypeScript definitions
+├── subagents/             # Specialized agent definitions
+│   ├── backend_agent.md   # Python/FastAPI/Supabase tasks
+│   ├── frontend_agent.md  # React Native/UI tasks
+│   ├── debugger_agent.md  # Root cause analysis & patches
+│   ├── build_agent.md     # Dependencies/CI/CD/Docker
+│   ├── docs_agent.md      # Documentation tasks
+│   ├── git_agent.md       # Commits/branches/PRs
+│   ├── refactor_agent.md  # Code cleanup & optimization
+│   ├── reviewer_agent.md  # Code review & security
+│   ├── vercel_agent.md    # Vercel deployment config
+│   └── routing_memory.md  # Missed delegation log
 ├── docs/                  # Architecture documentation
 └── plans/                 # Implementation plans
 ```
@@ -111,6 +122,40 @@ Supabase PostgreSQL with migrations in `backend/migrations/`. Key tables:
 - `health_metrics` - Health data
 - `insights`, `patterns` - Analytics data
 
+## Subagent System
+
+Claude operates as an **orchestrator** that delegates tasks to specialized subagents defined in `subagents/`. Do not solve tasks directly if a matching agent exists.
+
+### Routing Table
+
+| Task Type | Agent | Model | Context |
+|-----------|-------|-------|---------|
+| Python, FastAPI, APIs, Supabase, auth | `backend_agent` | sonnet | large |
+| React Native, UI, styling, Zustand | `frontend_agent` | sonnet | large |
+| Runtime errors, stack traces, bug patches | `debugger_agent` | opus | deep |
+| Dependencies, CI/CD, Docker, builds | `build_agent` | haiku | small |
+| READMEs, API docs, developer docs | `docs_agent` | haiku | small |
+| Commits, branches, merge conflicts, PRs | `git_agent` | haiku | minimal |
+| Code cleanup, modularization, perf | `refactor_agent` | sonnet | medium |
+| Code review, security, best practices | `reviewer_agent` | opus | deep |
+| Vercel config, deployments | `vercel_agent` | haiku | small |
+
+### Orchestrator Workflow
+
+1. Analyze the user request
+2. Break into subtasks
+3. Route each subtask to the correct agent (see routing table)
+4. Delegate using the Task tool with the agent's model preference
+5. Collect results and return the final answer
+6. If a task was handled directly instead of delegated, log it in `subagents/routing_memory.md`
+
+### Token Optimization Rules
+
+- Read the minimum number of files needed
+- Avoid scanning the whole repo
+- Use the smallest capable agent (prefer haiku for lightweight tasks)
+- Use opus only for deep reasoning (debugging, review)
+
 ## Additional Documentation
 
 Check these files for specialized topics:
@@ -123,6 +168,8 @@ Check these files for specialized topics:
 | Backend setup | `backend/README.md` |
 | Wellness features | `WELLNESS_INSIGHTS_SETUP.md` |
 | API architecture | `docs/` directory |
+| Subagent definitions | `subagents/` directory |
+| Routing failures log | `subagents/routing_memory.md` |
 
 ## Quick Reference
 

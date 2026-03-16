@@ -217,6 +217,10 @@ export default function SettingsScreen() {
   const { preferences, fetchPreferences, updatePreferences, profile } = useUserStore();
   const isPro = useSubscriptionStore((s) => s.isPro);
   const loadSubscriptionStatus = useSubscriptionStore((s) => s.loadSubscriptionStatus);
+  const checkoutLoading = useSubscriptionStore((s) => s.checkoutLoading);
+  const startCheckout = useSubscriptionStore((s) => s.startCheckout);
+  const priceString = useSubscriptionStore((s) => s.priceString);
+  const loadProductPrice = useSubscriptionStore((s) => s.loadProductPrice);
 
   // ============================================================================
   // STATE (Original names preserved)
@@ -315,7 +319,8 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       loadSubscriptionStatus();
-    }, [loadSubscriptionStatus]),
+      if (!isPro) loadProductPrice();
+    }, [loadSubscriptionStatus, isPro, loadProductPrice]),
   );
 
   // HealthKit enabled state is now managed by healthStore - no need to check permissions on mount
@@ -634,6 +639,32 @@ export default function SettingsScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </View>
           </TouchableOpacity>
+
+          {/* ================================================================ */}
+          {/* SECTION: Upgrade to Pro (only shown for free users) */}
+          {/* ================================================================ */}
+          {!isPro && (
+            <TouchableOpacity
+              style={[styles.upgradeCard, { backgroundColor: colors.primary }]}
+              onPress={startCheckout}
+              disabled={checkoutLoading}
+              activeOpacity={0.8}
+            >
+              <View style={styles.upgradeCardContent}>
+                <View style={styles.upgradeCardLeft}>
+                  <Text style={styles.upgradeCardTitle}>Upgrade to Pro</Text>
+                  <Text style={styles.upgradeCardDesc}>
+                    10 messages/day, 30/week{priceString ? ` — ${priceString}/mo` : ''}
+                  </Text>
+                </View>
+                {checkoutLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="arrow-forward-circle" size={28} color="#FFFFFF" />
+                )}
+              </View>
+            </TouchableOpacity>
+          )}
 
           {/* ================================================================ */}
           {/* SECTION 2: Appearance */}
@@ -1744,5 +1775,29 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: Spacing.sm,
+  },
+  upgradeCard: {
+    borderRadius: 12,
+    marginBottom: Spacing.lg,
+    padding: Spacing.lg,
+  },
+  upgradeCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  upgradeCardLeft: {
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  upgradeCardTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  upgradeCardDesc: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
   },
 });

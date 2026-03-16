@@ -15,6 +15,8 @@ export enum NotificationType {
   STREAK_ALERT = 'streak_alert',
   COACH_TASK = 'coach_task',
   COACH_MESSAGE = 'coach_message',
+  PATTERN_ALERT = 'pattern_alert',
+  ACCOUNTABILITY_NUDGE = 'accountability_nudge',
 }
 
 // Types for notification handling
@@ -37,6 +39,17 @@ export interface ScheduledNotification {
   data?: NotificationData;
 }
 
+// Cached notification module import — avoids repeated dynamic imports
+let _Notifications: any = null;
+let _importAttempted = false;
+async function getNotifications() {
+  if (!_importAttempted) {
+    _importAttempted = true;
+    _Notifications = await import('expo-notifications');
+  }
+  return _Notifications;
+}
+
 // Navigation reference for deep linking from notifications
 let navigationRef: any = null;
 
@@ -52,7 +65,7 @@ export function setNotificationNavigationRef(ref: any) {
 export async function registerForPushNotifications(): Promise<string | null> {
   try {
     // Dynamically import expo-notifications to handle cases where it's not available
-    const Notifications = await import('expo-notifications').catch(() => null);
+    const Notifications = await getNotifications();
 
     if (!Notifications) {
       console.log('[notificationService] expo-notifications not available');
@@ -152,7 +165,7 @@ export async function unregisterPushNotifications(token: string): Promise<void> 
  */
 export async function setupNotificationHandlers(): Promise<() => void> {
   try {
-    const Notifications = await import('expo-notifications').catch(() => null);
+    const Notifications = await getNotifications();
 
     if (!Notifications) {
       console.log('[notificationService] expo-notifications not available for handlers');
@@ -171,7 +184,7 @@ export async function setupNotificationHandlers(): Promise<() => void> {
 
     // Handle notifications received while app is foregrounded
     const foregroundSubscription = Notifications.addNotificationReceivedListener(
-      (notification) => {
+      (notification: any) => {
         console.log('[notificationService] Foreground notification received:', notification);
         // You can handle foreground notifications here (e.g., show in-app toast)
       }
@@ -179,7 +192,7 @@ export async function setupNotificationHandlers(): Promise<() => void> {
 
     // Handle notification tap (user interaction)
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
+      (response: any) => {
         console.log('[notificationService] Notification tapped:', response);
 
         const data = response.notification.request.content.data as NotificationData;
@@ -226,10 +239,12 @@ function handleNotificationNavigation(data: NotificationData): void {
 
       case NotificationType.COACH_NUDGE:
       case NotificationType.COACH_MESSAGE:
+      case NotificationType.ACCOUNTABILITY_NUDGE:
         navigationRef.navigate('Coach');
         break;
 
       case NotificationType.INSIGHT:
+      case NotificationType.PATTERN_ALERT:
         navigationRef.navigate('Insights');
         break;
 
@@ -258,7 +273,7 @@ export async function scheduleLocalNotification(
   data?: NotificationData
 ): Promise<string | null> {
   try {
-    const Notifications = await import('expo-notifications').catch(() => null);
+    const Notifications = await getNotifications();
 
     if (!Notifications) {
       console.log('[notificationService] expo-notifications not available for scheduling');
@@ -298,7 +313,7 @@ export async function scheduleLocalNotification(
  */
 export async function cancelScheduledNotification(notificationId: string): Promise<void> {
   try {
-    const Notifications = await import('expo-notifications').catch(() => null);
+    const Notifications = await getNotifications();
 
     if (!Notifications) {
       return;
@@ -316,7 +331,7 @@ export async function cancelScheduledNotification(notificationId: string): Promi
  */
 export async function cancelAllScheduledNotifications(): Promise<void> {
   try {
-    const Notifications = await import('expo-notifications').catch(() => null);
+    const Notifications = await getNotifications();
 
     if (!Notifications) {
       return;
@@ -334,7 +349,7 @@ export async function cancelAllScheduledNotifications(): Promise<void> {
  */
 export async function getBadgeCount(): Promise<number> {
   try {
-    const Notifications = await import('expo-notifications').catch(() => null);
+    const Notifications = await getNotifications();
 
     if (!Notifications || Platform.OS !== 'ios') {
       return 0;
@@ -352,7 +367,7 @@ export async function getBadgeCount(): Promise<number> {
  */
 export async function setBadgeCount(count: number): Promise<void> {
   try {
-    const Notifications = await import('expo-notifications').catch(() => null);
+    const Notifications = await getNotifications();
 
     if (!Notifications || Platform.OS !== 'ios') {
       return;

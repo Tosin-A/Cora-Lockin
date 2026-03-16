@@ -287,12 +287,29 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         set({ pendingCalendarEvent: calendarCall.result.event_data });
       }
 
-      // Reconcile in the background — don't block the user from typing
-      get().waitForReconciliation([clientTempId]).then(() => {
-        if (assistantTempIds.length > 0) {
-          return get().waitForAssistantReconciliation(assistantTempIds);
-        }
-      });
+      // Immediately swap the optimistic message's ID with the real saved ID
+      // — no polling needed for the user message
+      if (data?.saved_ids?.user_message) {
+        set((state) => ({
+          messages: state.messages.map((m): ChatMessage =>
+            m.client_temp_id === clientTempId
+              ? { ...m, id: data.saved_ids!.user_message!, isOptimistic: false, status: 'delivered', client_temp_id: undefined }
+              : m
+          ),
+          pendingReconciliation: state.pendingReconciliation.filter(
+            (id) => id !== clientTempId
+          ),
+          pendingMessageIds: state.pendingMessageIds.filter(
+            (id) => id !== clientTempId
+          ),
+        }));
+      }
+
+      // Single delayed history fetch to pick up the assistant response
+      // instead of polling up to 40 times
+      setTimeout(() => {
+        get().loadChatHistory({ useFullReplace: true, forceRefresh: true, silent: true });
+      }, 2000);
 
       // Refresh usage stats after successful message
       const { loadUsageStats } = useMessageLimitStore.getState();
@@ -300,38 +317,66 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     } catch (error: any) {
       console.error("Failed to send message:", error);
 
-      // Clear typing state on error
-      set((state) => ({
-        typing: false,
-        pendingReconciliation: state.pendingReconciliation.filter(
-          (id) => id !== clientTempId
-        ),
-        pendingMessageIds: state.pendingMessageIds.filter(
-          (id) => id !== clientTempId
-        ),
-      }));
+      const isTimeout =
+        error?.name === "AbortError" ||
+        error?.message?.includes("timeout") ||
+        error?.message?.includes("aborted");
 
-      // Update user message with error status
-      get().updateMessage(clientTempId, { status: "sent" });
+      if (isTimeout) {
+        // On timeout, keep the optimistic message and try reconciliation.
+        // The backend may still process the request successfully.
+        console.log("Chat request timed out — attempting background reconciliation");
+        set({ typing: false });
+        get()
+          .waitForReconciliation([clientTempId])
+          .then((reconciled) => {
+            if (!reconciled) {
+              // Reconciliation failed — now show the error
+              set((state) => ({
+                messages: state.messages.filter(
+                  (m) => m.client_temp_id !== clientTempId
+                ),
+              }));
+              const errorMessage: ChatMessage = {
+                id: `error-${Date.now()}`,
+                text: "I'm sorry, I'm having trouble responding right now. Please try again.",
+                sender: "coach",
+                timestamp: new Date(),
+              };
+              set((state) => ({
+                messages: [...state.messages, errorMessage],
+              }));
+            }
+          });
+      } else {
+        // Non-timeout error — show error immediately
+        set((state) => ({
+          typing: false,
+          pendingReconciliation: state.pendingReconciliation.filter(
+            (id) => id !== clientTempId
+          ),
+          pendingMessageIds: state.pendingMessageIds.filter(
+            (id) => id !== clientTempId
+          ),
+        }));
 
-      // Remove the failed temp message (it will be restored from history if needed)
-      set((state) => ({
-        messages: state.messages.filter(
-          (m) => m.client_temp_id !== clientTempId
-        ),
-      }));
+        set((state) => ({
+          messages: state.messages.filter(
+            (m) => m.client_temp_id !== clientTempId
+          ),
+        }));
 
-      // Add error message from coach
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        text: "I'm sorry, I'm having trouble responding right now. Please try again.",
-        sender: "coach",
-        timestamp: new Date(),
-      };
+        const errorMessage: ChatMessage = {
+          id: `error-${Date.now()}`,
+          text: "I'm sorry, I'm having trouble responding right now. Please try again.",
+          sender: "coach",
+          timestamp: new Date(),
+        };
 
-      set((state) => ({
-        messages: [...state.messages, errorMessage],
-      }));
+        set((state) => ({
+          messages: [...state.messages, errorMessage],
+        }));
+      }
     } finally {
       // Ensure sending is always released (covers error paths too)
       if (get().sending) {
@@ -445,7 +490,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   // Phase 3: Wait for DB reconciliation
   // Poll /history until we see messages with real DB IDs (not temp IDs)
-  waitForReconciliation: async (tempIds: string[], maxAttempts = 20) => {
+  waitForReconciliation: async (tempIds: string[], maxAttempts = 5) => {
     const { pendingReconciliation, pendingMessageIds, loadChatHistory } = get();
 
     // Filter to only the temp IDs we're waiting for
@@ -493,9 +538,9 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         return true;
       }
 
-      // Wait before next poll (100ms base + exponential backoff)
+      // Wait before next poll (500ms base + exponential backoff)
       await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(100 * Math.pow(2, attempt), 2000))
+        setTimeout(resolve, Math.min(500 * Math.pow(2, attempt), 4000))
       );
     }
 
@@ -527,7 +572,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   // Poll /history until we see assistant messages with real DB IDs
   waitForAssistantReconciliation: async (
     tempIds: string[],
-    maxAttempts = 20
+    maxAttempts = 5
   ) => {
     const { pendingAssistantTempIds, loadChatHistory, messages } = get();
 
@@ -575,9 +620,9 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         return true;
       }
 
-      // Wait before next poll (100ms base + exponential backoff)
+      // Wait before next poll (500ms base + exponential backoff)
       await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(100 * Math.pow(2, attempt), 2000))
+        setTimeout(resolve, Math.min(500 * Math.pow(2, attempt), 4000))
       );
     }
 

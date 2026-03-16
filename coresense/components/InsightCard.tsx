@@ -49,7 +49,7 @@ const categoryConfig = {
   },
 } as const;
 
-export function InsightCard({
+export const InsightCard = React.memo(function InsightCard({
   title,
   message,
   category,
@@ -118,7 +118,7 @@ export function InsightCard({
       )}
     </Card>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

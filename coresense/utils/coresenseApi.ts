@@ -675,6 +675,7 @@ export async function sendChatMessage(
   return apiRequest("/api/v1/coach/custom-gpt/chat", {
     method: "POST",
     body: requestBody,
+    timeout: 60000,
   });
 }
 
@@ -1161,6 +1162,16 @@ export interface Todo {
   coach_reasoning?: string;
   linked_insight_id?: string;
   completed_at?: string;
+  is_recurring?: boolean;
+  frequency?: 'daily' | 'weekly';
+  streak_count?: number;
+  longest_streak?: number;
+  icon?: string;
+  completed_today?: boolean;
+  weekly_completed?: number;
+  weekly_target?: number;
+  sort_order?: number;
+  streak_milestone?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -1173,6 +1184,15 @@ export interface CreateTodoInput {
   due_time?: string;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
+  is_recurring?: boolean;
+  frequency?: 'daily' | 'weekly';
+  icon?: string;
+  weekly_target?: number;
+}
+
+export interface CompletionDay {
+  date: string;
+  count: number;
 }
 
 export interface CreateCoachTodoInput extends CreateTodoInput {
@@ -1236,6 +1256,84 @@ export async function deleteTodo(todoId: string): Promise<{
     { method: 'DELETE' },
   );
   return { success: data?.success || false, error };
+}
+
+// ============================================================================
+// RECURRING TASKS API
+// ============================================================================
+
+export async function getRecurringTodosToday(): Promise<{
+  data: Todo[] | null;
+  error: string | null;
+}> {
+  return apiRequest<Todo[]>('/api/v1/todos/today');
+}
+
+export async function toggleRecurringTodo(todoId: string): Promise<{
+  data: Todo | null;
+  error: string | null;
+}> {
+  return apiRequest<Todo>(`/api/v1/todos/${todoId}/toggle`, {
+    method: 'POST',
+  });
+}
+
+export async function getCompletionHistory(days: number = 30): Promise<{
+  data: CompletionDay[] | null;
+  error: string | null;
+}> {
+  return apiRequest<CompletionDay[]>(`/api/v1/todos/completions?days=${days}`);
+}
+
+export async function reorderRecurringTodos(taskIds: string[]): Promise<{
+  data: { success: boolean } | null;
+  error: string | null;
+}> {
+  return apiRequest<{ success: boolean }>('/api/v1/todos/reorder', {
+    method: 'PUT',
+    body: { task_ids: taskIds },
+  });
+}
+
+// ============================================================================
+// WEEKLY RECAP API
+// ============================================================================
+
+export interface WeeklyRecap {
+  period_start: string;
+  period_end: string;
+  mood_trend: Array<{ date: string; value: number }>;
+  energy_trend: Array<{ date: string; value: number }>;
+  sleep_trend: Array<{ date: string; value: number }>;
+  steps_trend: Array<{ date: string; value: number }>;
+  tasks_completed_by_day: Array<{ date: string; count: number }>;
+  tasks_completed_total: number;
+  tasks_streak: number;
+  coach_summary: string;
+}
+
+export async function getWeeklyRecap(days: number = 7): Promise<{
+  data: WeeklyRecap | null;
+  error: string | null;
+}> {
+  return apiRequest<WeeklyRecap>(`/api/v1/recap/weekly?days=${days}`);
+}
+
+// ============================================================================
+// ONBOARDING API
+// ============================================================================
+
+export async function completeOnboarding(
+  goals: string[],
+  messagingStyle: string,
+): Promise<{
+  data: { coach_message: any; starter_habits: Todo[] } | null;
+  error: string | null;
+}> {
+  return apiRequest('/api/v1/onboarding/complete', {
+    method: 'POST',
+    body: { goals, messaging_style: messagingStyle },
+  });
 }
 
 // ============================================================================
@@ -1448,6 +1546,18 @@ export const coresenseApi = {
   updateTodoStatus,
   updateTodo,
   deleteTodo,
+
+  // Recurring Tasks
+  getRecurringTodosToday,
+  toggleRecurringTodo,
+  getCompletionHistory,
+  reorderRecurringTodos,
+
+  // Weekly Recap
+  getWeeklyRecap,
+
+  // Onboarding
+  completeOnboarding,
 
   // Notifications
   registerDeviceToken,

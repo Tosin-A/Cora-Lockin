@@ -16,7 +16,7 @@ interface CardProps {
   style?: StyleProp<ViewStyle>;
 }
 
-export const Card: React.FC<CardProps> = ({
+export const Card: React.FC<CardProps> = React.memo(({
   children,
   variant = 'default',
   onPress,
@@ -67,4 +67,4 @@ export const Card: React.FC<CardProps> = ({
   }
 
   return <View style={cardStyle}>{children}</View>;
-};
+});

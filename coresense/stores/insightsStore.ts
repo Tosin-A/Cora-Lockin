@@ -140,7 +140,8 @@ export const useInsightsStore = create<InsightsStore>()(
 
         try {
           console.log('[InsightsStore] Fetching health insights...');
-          const { data, error, errorCategory } = await coresenseApi.getHealthInsights();
+          const { data, error, ...rest } = await coresenseApi.getHealthInsights();
+          const errorCategory = (rest as any).errorCategory;
 
           if (error) {
             // Don't log auth errors as warnings - they're expected when not logged in
