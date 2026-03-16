@@ -376,7 +376,7 @@ export default function AccountScreen() {
                   <Text style={styles.proPillText}>Active</Text>
                 </View>
                 <Text style={[styles.proSubscriptionDesc, { color: colors.textSecondary }]}>
-                  10 messages/day, 30/week
+                  25 messages/day, 60/week
                 </Text>
               </View>
               <TouchableOpacity
@@ -404,7 +404,7 @@ export default function AccountScreen() {
               <View style={[styles.proFeatureRow, { backgroundColor: colors.surfaceMedium }]}>
                 <Ionicons name="chatbubble-outline" size={15} color={colors.textTertiary} />
                 <Text style={[styles.proFeatureText, { color: colors.textSecondary }]}>
-                  10 messages per day, 30 per week
+                  25 messages per day, 60 per week
                 </Text>
               </View>
               <TouchableOpacity

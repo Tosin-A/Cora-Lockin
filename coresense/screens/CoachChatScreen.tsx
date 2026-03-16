@@ -660,7 +660,7 @@ export default function CoachChatScreen({ navigation }: any) {
               You've hit your message limit
             </Text>
             <Text style={[upgradeStyles.desc, { color: colors.textSecondary }]}>
-              Upgrade to Pro for unlimited messages and keep the conversation going
+              Upgrade to Pro for 25 messages/day and 60/week to keep the conversation going
             </Text>
             <TouchableOpacity
               style={[upgradeStyles.upgradeBtn, { backgroundColor: colors.primary }]}

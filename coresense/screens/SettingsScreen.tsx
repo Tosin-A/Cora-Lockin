@@ -654,7 +654,7 @@ export default function SettingsScreen() {
                 <View style={styles.upgradeCardLeft}>
                   <Text style={styles.upgradeCardTitle}>Upgrade to Pro</Text>
                   <Text style={styles.upgradeCardDesc}>
-                    10 messages/day, 30/week{priceString ? ` — ${priceString}/mo` : ''}
+                    25 messages/day, 60/week{priceString ? ` — ${priceString}/mo` : ''}
                   </Text>
                 </View>
                 {checkoutLoading ? (

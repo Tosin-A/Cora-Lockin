@@ -1,7 +1,7 @@
 /**
  * Message Limit Store
  * Tracks daily/weekly message limits.
- * Free: 5/day, 15/week
+ * Free: 10/day, 25/week — Pro: 25/day, 60/week
  */
 
 import { create } from 'zustand';
@@ -32,15 +32,15 @@ interface MessageLimitState {
 export const useMessageLimitStore = create<MessageLimitState>((set, get) => ({
   // Initial state
   messagesUsed: 0,
-  messagesLimit: 5,
-  messagesRemaining: 5,
+  messagesLimit: 10,
+  messagesRemaining: 10,
   usagePercentage: 0,
   dailyUsed: 0,
-  dailyLimit: 5,
-  dailyRemaining: 5,
+  dailyLimit: 10,
+  dailyRemaining: 10,
   weeklyUsed: 0,
-  weeklyLimit: 15,
-  weeklyRemaining: 15,
+  weeklyLimit: 25,
+  weeklyRemaining: 25,
   limitType: null,
   loading: false,
   error: null,
@@ -68,11 +68,11 @@ export const useMessageLimitStore = create<MessageLimitState>((set, get) => ({
           messagesLimit: data.messages_limit,
           messagesRemaining: data.messages_remaining,
           dailyUsed: data.daily_used ?? 0,
-          dailyLimit: data.daily_limit ?? 5,
-          dailyRemaining: data.daily_remaining ?? 5,
+          dailyLimit: data.daily_limit ?? 10,
+          dailyRemaining: data.daily_remaining ?? 10,
           weeklyUsed: data.weekly_used ?? 0,
-          weeklyLimit: data.weekly_limit ?? 15,
-          weeklyRemaining: data.weekly_remaining ?? 15,
+          weeklyLimit: data.weekly_limit ?? 25,
+          weeklyRemaining: data.weekly_remaining ?? 25,
           limitType: data.limit_type ?? null,
           usagePercentage: Math.min(100, (data.daily_used / data.daily_limit) * 100),
           loading: false,
