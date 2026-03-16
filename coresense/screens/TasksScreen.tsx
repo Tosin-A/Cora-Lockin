@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -119,13 +120,15 @@ export default function TasksScreen() {
   const pendingTodos = getPendingTodos();
   const completedTodos = getCompletedTodos();
 
-  useEffect(() => {
-    if (user) {
-      fetchTodos();
-      fetchRecurringToday();
-      generateCoachSuggestions();
-    }
-  }, [user]);
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        fetchTodos();
+        fetchRecurringToday();
+        generateCoachSuggestions();
+      }
+    }, [user])
+  );
 
   const generateCoachSuggestions = useCallback(() => {
     const recentMessages = messages.slice(-10);

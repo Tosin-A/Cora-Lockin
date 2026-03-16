@@ -73,15 +73,16 @@ const EVENING_GREETINGS = [
   "Calm finish, yeah",
 ];
 
-// TaskCard component for individual task items with completion animation
+// TaskCard component for individual task items
 interface TaskCardProps {
   todo: Todo;
   onComplete: (todoId: string) => void;
+  onPress: (todo: Todo) => void;
   isCompleting?: boolean;
   colors: ReturnType<typeof import('../contexts/ThemeContext').useTheme>['colors'];
 }
 
-const TaskCard = ({ todo, onComplete, isCompleting = false, colors }: TaskCardProps) => {
+const TaskCard = ({ todo, onComplete, onPress, isCompleting = false, colors }: TaskCardProps) => {
   const isCompleted = todo.status === 'completed' || isCompleting;
 
   const handleComplete = useCallback(() => {
@@ -90,15 +91,24 @@ const TaskCard = ({ todo, onComplete, isCompleting = false, colors }: TaskCardPr
     }
   }, [isCompleted, isCompleting, onComplete, todo.id]);
 
+  const handlePress = useCallback(() => {
+    if (!isCompleted && !isCompleting) {
+      onPress(todo);
+    }
+  }, [isCompleted, isCompleting, onPress, todo]);
+
   return (
-    <View
+    <TouchableOpacity
       style={[
         taskCardStyles.taskCard,
         { backgroundColor: colors.surface, borderColor: colors.border },
         isCompleted && [taskCardStyles.taskCardCompleted, { backgroundColor: colors.surfaceMedium }],
       ]}
+      onPress={handlePress}
+      activeOpacity={0.7}
+      disabled={isCompleting || isCompleted}
     >
-      {/* Checkbox - primary touch target */}
+      {/* Checkbox - completes the task */}
       <TouchableOpacity
         style={taskCardStyles.checkboxTouchArea}
         onPress={handleComplete}
@@ -113,13 +123,8 @@ const TaskCard = ({ todo, onComplete, isCompleting = false, colors }: TaskCardPr
         />
       </TouchableOpacity>
 
-      {/* Task content - also tappable to complete */}
-      <TouchableOpacity
-        style={taskCardStyles.taskContent}
-        onPress={handleComplete}
-        activeOpacity={0.8}
-        disabled={isCompleting || isCompleted}
-      >
+      {/* Task content - tapping opens detail */}
+      <View style={taskCardStyles.taskContent}>
         <View style={taskCardStyles.taskTitleRow}>
           <Text
             style={[
@@ -146,7 +151,7 @@ const TaskCard = ({ todo, onComplete, isCompleting = false, colors }: TaskCardPr
             {todo.coach_reasoning}
           </Text>
         )}
-      </TouchableOpacity>
+      </View>
 
       <View
         style={[
@@ -157,7 +162,7 @@ const TaskCard = ({ todo, onComplete, isCompleting = false, colors }: TaskCardPr
           isCompleted && { backgroundColor: colors.success },
         ]}
       />
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -298,6 +303,9 @@ export default function HomeScreen() {
 
   // Quick check-in modal state
   const [showQuickLog, setShowQuickLog] = useState(false);
+
+  // Task detail modal state
+  const [selectedTaskDetail, setSelectedTaskDetail] = useState<Todo | null>(null);
 
   // Task completion state - track tasks being completed for visual feedback
   const [completingTasks, setCompletingTasks] = useState<Set<string>>(new Set());
@@ -560,7 +568,7 @@ export default function HomeScreen() {
     setNewTaskDueDate(undefined);
     setNewTaskDueTime(undefined);
     setAddTaskModalVisible(false);
-    fetchTodos(); // Refresh the list
+    navigation.navigate('Tasks' as any);
   };
 
   // Handle completing a task with visual feedback
@@ -920,6 +928,7 @@ export default function HomeScreen() {
                 key={todo.id}
                 todo={todo}
                 onComplete={handleCompleteTask}
+                onPress={setSelectedTaskDetail}
                 isCompleting={completingTasks.has(todo.id)}
                 colors={colors}
               />
@@ -1068,6 +1077,120 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Task Detail Modal */}
+      <Modal
+        visible={!!selectedTaskDetail}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedTaskDetail(null)}
+      >
+        <TouchableOpacity
+          style={styles.taskDetailBackdrop}
+          activeOpacity={1}
+          onPress={() => setSelectedTaskDetail(null)}
+        />
+        <View style={[styles.taskDetailContent, { backgroundColor: colors.surface }]}>
+          {selectedTaskDetail && (
+            <>
+              <View style={styles.taskDetailHeader}>
+                <Text style={[styles.taskDetailHeaderTitle, { color: colors.textPrimary }]}>Task Details</Text>
+                <TouchableOpacity onPress={() => setSelectedTaskDetail(null)}>
+                  <Ionicons name="close" size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.taskDetailTitle, { color: colors.textPrimary }]}>{selectedTaskDetail.title}</Text>
+
+              {/* Priority + Created by */}
+              <View style={styles.taskDetailMeta}>
+                <View style={[styles.taskDetailMetaItem, { backgroundColor: colors.surfaceMedium }]}>
+                  <View style={[
+                    styles.taskDetailPriorityDot,
+                    selectedTaskDetail.priority === 'urgent' && { backgroundColor: '#FF4444' },
+                    selectedTaskDetail.priority === 'high' && { backgroundColor: '#A78BFA' },
+                    selectedTaskDetail.priority === 'medium' && { backgroundColor: colors.textTertiary },
+                    selectedTaskDetail.priority === 'low' && { backgroundColor: colors.textTertiary },
+                  ]} />
+                  <Text style={[styles.taskDetailMetaText, { color: colors.textPrimary }]}>
+                    {selectedTaskDetail.priority.charAt(0).toUpperCase() + selectedTaskDetail.priority.slice(1)} priority
+                  </Text>
+                </View>
+                {selectedTaskDetail.created_by === 'coach' && (
+                  <View style={[styles.taskDetailMetaItem, { backgroundColor: colors.primary + '15' }]}>
+                    <Ionicons name="sparkles" size={14} color={colors.primary} />
+                    <Text style={[styles.taskDetailMetaText, { color: colors.primary }]}>Coach suggested</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Due date + time */}
+              {(selectedTaskDetail.due_date || selectedTaskDetail.due_time) && (
+                <View style={styles.taskDetailMeta}>
+                  {selectedTaskDetail.due_date && (
+                    <View style={[styles.taskDetailMetaItem, { backgroundColor: colors.surfaceMedium }]}>
+                      <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+                      <Text style={[styles.taskDetailMetaText, { color: colors.textPrimary }]}>
+                        {new Date(selectedTaskDetail.due_date).toLocaleDateString('en-US', {
+                          weekday: 'short',
+                          month: 'long',
+                          day: 'numeric',
+                        })}
+                      </Text>
+                    </View>
+                  )}
+                  {selectedTaskDetail.due_time && (
+                    <View style={[styles.taskDetailMetaItem, { backgroundColor: colors.surfaceMedium }]}>
+                      <Ionicons name="time-outline" size={16} color={colors.primary} />
+                      <Text style={[styles.taskDetailMetaText, { color: colors.textPrimary }]}>
+                        {(() => {
+                          const [h, m] = selectedTaskDetail.due_time!.split(':').map(Number);
+                          const period = h >= 12 ? 'PM' : 'AM';
+                          return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${period}`;
+                        })()}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Description */}
+              {selectedTaskDetail.description && (
+                <View style={styles.taskDetailDescSection}>
+                  <Text style={[styles.taskDetailDescLabel, { color: colors.textTertiary }]}>Description</Text>
+                  <Text style={[styles.taskDetailDesc, { color: colors.textSecondary }]}>
+                    {selectedTaskDetail.description}
+                  </Text>
+                </View>
+              )}
+
+              {/* Coach reasoning */}
+              {selectedTaskDetail.coach_reasoning && (
+                <View style={styles.taskDetailDescSection}>
+                  <Text style={[styles.taskDetailDescLabel, { color: colors.textTertiary }]}>Why this was suggested</Text>
+                  <Text style={[styles.taskDetailDesc, { color: colors.textSecondary }]}>
+                    {selectedTaskDetail.coach_reasoning}
+                  </Text>
+                </View>
+              )}
+
+              {/* Complete button */}
+              {selectedTaskDetail.status !== 'completed' && (
+                <TouchableOpacity
+                  style={[styles.taskDetailCompleteBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => {
+                    handleCompleteTask(selectedTaskDetail.id);
+                    setSelectedTaskDetail(null);
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.taskDetailCompleteBtnText}>Mark as Complete</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      </Modal>
 
       {/* Add Task Modal */}
       <Modal
@@ -1696,6 +1819,84 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.textPrimary,
     fontWeight: '600',
+  },
+  // Task Detail Modal Styles
+  taskDetailBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  taskDetailContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: BorderRadius.large,
+    borderTopRightRadius: BorderRadius.large,
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xxl,
+    maxHeight: '70%',
+  },
+  taskDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  taskDetailHeaderTitle: {
+    ...Typography.h3,
+    fontWeight: '600',
+  },
+  taskDetailTitle: {
+    ...Typography.h2,
+    marginBottom: Spacing.md,
+  },
+  taskDetailMeta: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  taskDetailMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.medium,
+  },
+  taskDetailMetaText: {
+    ...Typography.caption,
+    fontWeight: '500',
+  },
+  taskDetailPriorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  taskDetailDescSection: {
+    marginBottom: Spacing.md,
+  },
+  taskDetailDescLabel: {
+    ...Typography.caption,
+    fontWeight: '600',
+    marginBottom: Spacing.xs,
+  },
+  taskDetailDesc: {
+    ...Typography.body,
+    lineHeight: 22,
+  },
+  taskDetailCompleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.medium,
+    marginTop: Spacing.sm,
+  },
+  taskDetailCompleteBtnText: {
+    ...Typography.button,
+    color: '#FFFFFF',
   },
   // Add Task Modal Styles
   addTaskModalOverlay: {

@@ -1,6 +1,6 @@
 /**
  * Health Analytics Screen
- * Displays steps, sleep, and health metrics with charts
+ * Displays steps, sleep, heart rate, and active energy with charts
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -13,23 +13,106 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
+import { Spacing, Typography, BorderRadius } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { Card } from '../components/Card';
 import { StatTile } from '../components/StatTile';
 import { useAuthStore } from '../stores/authStore';
 import { useHealthStore } from '../stores/healthStore';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 
 const screenWidth = Dimensions.get('window').width;
 const chartWidth = screenWidth - Spacing.lg * 2;
 
+// Skeleton placeholder for a single block
+function SkeletonBlock({
+  width,
+  height,
+  borderRadius = 8,
+  opacity,
+  backgroundColor,
+}: {
+  width: number | string;
+  height: number;
+  borderRadius?: number;
+  opacity: Animated.Value;
+  backgroundColor: string;
+}) {
+  return (
+    <Animated.View
+      style={{
+        width: width as any,
+        height,
+        borderRadius,
+        backgroundColor,
+        opacity,
+      }}
+    />
+  );
+}
+
+// Full skeleton layout for the main content
+function HealthSkeleton({ opacity, backgroundColor }: { opacity: Animated.Value; backgroundColor: string }) {
+  return (
+    <View style={{ gap: Spacing.xl }}>
+      {/* Header skeleton */}
+      <View style={{ gap: Spacing.sm }}>
+        <SkeletonBlock width={180} height={28} borderRadius={6} opacity={opacity} backgroundColor={backgroundColor} />
+        <SkeletonBlock width={140} height={14} borderRadius={4} opacity={opacity} backgroundColor={backgroundColor} />
+      </View>
+
+      {/* Today section skeleton */}
+      <View style={{ gap: Spacing.md }}>
+        <SkeletonBlock width={60} height={16} borderRadius={4} opacity={opacity} backgroundColor={backgroundColor} />
+        <View style={{ flexDirection: 'row', gap: Spacing.md }}>
+          <View style={{ flex: 1 }}>
+            <SkeletonBlock width="100%" height={80} borderRadius={BorderRadius.medium} opacity={opacity} backgroundColor={backgroundColor} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <SkeletonBlock width="100%" height={80} borderRadius={BorderRadius.medium} opacity={opacity} backgroundColor={backgroundColor} />
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: Spacing.md }}>
+          <View style={{ flex: 1 }}>
+            <SkeletonBlock width="100%" height={80} borderRadius={BorderRadius.medium} opacity={opacity} backgroundColor={backgroundColor} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <SkeletonBlock width="100%" height={80} borderRadius={BorderRadius.medium} opacity={opacity} backgroundColor={backgroundColor} />
+          </View>
+        </View>
+      </View>
+
+      {/* Weekly averages skeleton */}
+      <View style={{ gap: Spacing.md }}>
+        <SkeletonBlock width={120} height={16} borderRadius={4} opacity={opacity} backgroundColor={backgroundColor} />
+        <View style={{ flexDirection: 'row', gap: Spacing.md }}>
+          <View style={{ flex: 1 }}>
+            <SkeletonBlock width="100%" height={88} borderRadius={BorderRadius.medium} opacity={opacity} backgroundColor={backgroundColor} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <SkeletonBlock width="100%" height={88} borderRadius={BorderRadius.medium} opacity={opacity} backgroundColor={backgroundColor} />
+          </View>
+        </View>
+      </View>
+
+      {/* Chart skeleton */}
+      <View style={{ gap: Spacing.md }}>
+        <SkeletonBlock width={160} height={16} borderRadius={4} opacity={opacity} backgroundColor={backgroundColor} />
+        <SkeletonBlock width="100%" height={220} borderRadius={BorderRadius.medium} opacity={opacity} backgroundColor={backgroundColor} />
+      </View>
+    </View>
+  );
+}
+
 export default function HealthScreen() {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   const { user } = useAuthStore();
   const {
     isAvailable,
@@ -38,6 +121,9 @@ export default function HealthScreen() {
     todayData,
     weeklySteps,
     weeklySleep,
+    weeklyHeartRate,
+    weeklyActiveEnergy,
+    isLoadingWeeklyData,
     isSyncing,
     lastSyncedAt,
     initialize,
@@ -50,6 +136,28 @@ export default function HealthScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  // Animated value for skeleton pulse
+  const skeletonOpacity = useMemo(() => new Animated.Value(0.4), []);
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonOpacity, {
+          toValue: 0.9,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonOpacity, {
+          toValue: 0.4,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [skeletonOpacity]);
+
   useEffect(() => {
     if (user) {
       initialize();
@@ -60,7 +168,6 @@ export default function HealthScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      // Run all refresh operations in parallel
       await Promise.all([
         refreshTodayData(),
         refreshWeeklyData(),
@@ -81,9 +188,7 @@ export default function HealthScreen() {
         'HealthKit permissions are required to view your health data. Please enable them in Settings > Health > Data Access & Devices.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => {
-            // Could use Linking.openSettings() here if needed
-          }},
+          { text: 'Open Settings', onPress: () => {} },
         ]
       );
     } else {
@@ -91,11 +196,26 @@ export default function HealthScreen() {
     }
   };
 
-  const calculateWeeklyAverage = (data: Array<{ date: Date; steps?: number; hours?: number }>, key: 'steps' | 'hours'): number => {
+  const calculateWeeklyAverage = (
+    data: Array<{ date: Date; steps?: number; hours?: number }>,
+    key: 'steps' | 'hours'
+  ): number => {
     if (data.length === 0) return 0;
     const sum = data.reduce((acc, item) => acc + (item[key] || 0), 0);
     return Math.round(sum / data.length);
   };
+
+  const avgHeartRate = useMemo(() => {
+    if (weeklyHeartRate.length === 0) return null;
+    const sum = weeklyHeartRate.reduce((acc, item) => acc + item.bpm, 0);
+    return Math.round(sum / weeklyHeartRate.length);
+  }, [weeklyHeartRate]);
+
+  const avgActiveEnergy = useMemo(() => {
+    if (weeklyActiveEnergy.length === 0) return null;
+    const sum = weeklyActiveEnergy.reduce((acc, item) => acc + item.calories, 0);
+    return Math.round(sum / weeklyActiveEnergy.length);
+  }, [weeklyActiveEnergy]);
 
   // Prepare chart data for steps
   const stepsChartData = useMemo(() => {
@@ -107,12 +227,12 @@ export default function HealthScreen() {
       datasets: [
         {
           data: hasData ? data : [0, 1],
-          color: (opacity = 1) => Colors.primary,
+          color: (opacity = 1) => colors.primary,
           strokeWidth: 2,
         },
       ],
     };
-  }, [weeklySteps]);
+  }, [weeklySteps, colors.primary]);
 
   // Prepare chart data for sleep
   const sleepChartData = useMemo(() => {
@@ -124,46 +244,56 @@ export default function HealthScreen() {
       datasets: [
         {
           data: hasData ? data : [0, 1],
-          color: (opacity = 1) => Colors.accent,
+          color: (opacity = 1) => colors.accent,
           strokeWidth: 2,
         },
       ],
     };
-  }, [weeklySleep]);
+  }, [weeklySleep, colors.accent]);
 
   // Check if charts have real data to display
   const hasStepsData = weeklySteps.length > 0 && weeklySteps.some((item) => Number(item.steps) > 0);
   const hasSleepData = weeklySleep.length > 0 && weeklySleep.some((item) => Number(item.hours) > 0);
 
-  const chartConfig = useMemo(() => ({
-    backgroundColor: Colors.surface,
-    backgroundGradientFrom: Colors.surface,
-    backgroundGradientTo: Colors.surface,
-    decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-    style: {
-      borderRadius: BorderRadius.medium,
-    },
-    propsForDots: {
-      r: '4',
-      strokeWidth: '2',
-      stroke: Colors.primary,
-    },
-  }), []);
+  // Theme-aware chart config
+  const chartConfig = useMemo(() => {
+    const labelRgb = isDark ? '229, 229, 229' : '71, 85, 105';
+    return {
+      backgroundColor: colors.surface,
+      backgroundGradientFrom: colors.surface,
+      backgroundGradientTo: colors.surface,
+      decimalPlaces: 0,
+      color: (opacity = 1) => `rgba(${labelRgb}, ${opacity * 0.3})`,
+      labelColor: (opacity = 1) => `rgba(${labelRgb}, ${opacity})`,
+      style: {
+        borderRadius: BorderRadius.medium,
+      },
+      propsForDots: {
+        r: '4',
+        strokeWidth: '2',
+        stroke: colors.primary,
+      },
+    };
+  }, [colors, isDark]);
+
+  const skeletonBg = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
 
   if (Platform.OS !== 'ios') {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + Spacing.md }]}>
-        <Text style={styles.errorText}>HealthKit is only available on iOS devices.</Text>
+      <View style={[{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top + Spacing.md }]}>
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          HealthKit is only available on iOS devices.
+        </Text>
       </View>
     );
   }
 
   if (!isAvailable) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + Spacing.md }]}>
-        <Text style={styles.errorText}>HealthKit is not available on this device.</Text>
+      <View style={[{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top + Spacing.md }]}>
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          HealthKit is not available on this device.
+        </Text>
       </View>
     );
   }
@@ -171,24 +301,26 @@ export default function HealthScreen() {
   if (!permissionsGranted) {
     return (
       <ScrollView
-        style={styles.container}
+        style={{ flex: 1, backgroundColor: colors.background }}
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + Spacing.md, paddingBottom: insets.bottom + Spacing.lg },
         ]}
       >
         <View style={styles.permissionContainer}>
-          <Ionicons name="heart-outline" size={64} color={Colors.primary} />
-          <Text style={styles.permissionTitle}>Health Data Access</Text>
-          <Text style={styles.permissionDescription}>
+          <Ionicons name="heart-outline" size={56} color={colors.primary} />
+          <Text style={[styles.permissionTitle, { color: colors.textPrimary }]}>
+            Health Data Access
+          </Text>
+          <Text style={[styles.permissionDescription, { color: colors.textSecondary }]}>
             CoreSense needs access to your health data to provide personalized coaching insights.
           </Text>
           <TouchableOpacity
-            style={styles.permissionButton}
+            style={[styles.permissionButton, { backgroundColor: colors.primary, minHeight: 44 }]}
             onPress={handleRequestPermissions}
             disabled={isInitializing}
           >
-            <Text style={styles.permissionButtonText}>
+            <Text style={[styles.permissionButtonText, { color: '#FFFFFF' }]}>
               {isInitializing ? 'Initializing...' : 'Grant Permissions'}
             </Text>
           </TouchableOpacity>
@@ -197,130 +329,200 @@ export default function HealthScreen() {
     );
   }
 
+  const isLoading = isInitializing || isLoadingWeeklyData;
   const weeklyStepsAvg = calculateWeeklyAverage(weeklySteps, 'steps');
   const weeklySleepAvg = calculateWeeklyAverage(weeklySleep, 'hours');
 
   return (
     <ScrollView
-      style={styles.container}
+      style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={[
         styles.content,
         { paddingTop: insets.top + Spacing.md, paddingBottom: insets.bottom + Spacing.lg },
       ]}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={colors.primary}
+        />
       }
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Health Analytics</Text>
-        {lastSyncedAt && (
-          <Text style={styles.subtitle}>
-            Last synced: {format(lastSyncedAt, 'MMM d, h:mm a')}
-          </Text>
-        )}
-      </View>
+      {isLoading ? (
+        <HealthSkeleton opacity={skeletonOpacity} backgroundColor={skeletonBg} />
+      ) : (
+        <>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Health Analytics</Text>
+            {lastSyncedAt && (
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                Last synced: {format(lastSyncedAt, 'MMM d, h:mm a')}
+              </Text>
+            )}
+          </View>
 
-      {/* Today's Stats */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Today</Text>
-        <View style={styles.statsGrid}>
-          <StatTile
-            icon="footsteps"
-            label="Steps"
-            value={todayData?.steps?.toLocaleString() || '0'}
-            subtitle="Today"
-          />
-          <StatTile
-            icon="moon"
-            label="Sleep"
-            value={todayData?.sleepHours ? `${todayData.sleepHours.toFixed(1)}h` : '0h'}
-            subtitle="Last night"
-          />
-        </View>
-      </View>
+          {/* Today's Stats — 2x2 grid */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Today</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statTileWrapper}>
+                <StatTile
+                  icon="footsteps"
+                  label="Steps"
+                  value={todayData?.steps?.toLocaleString() || '0'}
+                  subtitle="Today"
+                />
+              </View>
+              <View style={styles.statTileWrapper}>
+                <StatTile
+                  icon="moon"
+                  label="Sleep"
+                  value={todayData?.sleepHours ? `${todayData.sleepHours.toFixed(1)}h` : '0h'}
+                  subtitle="Last night"
+                />
+              </View>
+            </View>
+            <View style={[styles.statsGrid, { marginTop: Spacing.md }]}>
+              <View style={styles.statTileWrapper}>
+                <StatTile
+                  icon="heart"
+                  label="Heart Rate"
+                  value={
+                    todayData?.heartRate
+                      ? `${Math.round(todayData.heartRate)} bpm`
+                      : avgHeartRate
+                      ? `${avgHeartRate} bpm`
+                      : '—'
+                  }
+                  subtitle={todayData?.heartRate ? 'Latest' : avgHeartRate ? 'Avg this week' : 'No data'}
+                />
+              </View>
+              <View style={styles.statTileWrapper}>
+                <StatTile
+                  icon="flame"
+                  label="Active Energy"
+                  value={
+                    todayData?.activeEnergy
+                      ? `${Math.round(todayData.activeEnergy)} kcal`
+                      : avgActiveEnergy
+                      ? `${avgActiveEnergy} kcal`
+                      : '—'
+                  }
+                  subtitle={todayData?.activeEnergy ? 'Today' : avgActiveEnergy ? 'Avg this week' : 'No data'}
+                />
+              </View>
+            </View>
+          </View>
 
-      {/* Weekly Averages */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Weekly Averages</Text>
-        <View style={styles.statsGrid}>
-          <Card style={styles.averageCard}>
-            <Ionicons name="trending-up" size={24} color={Colors.textPrimary} />
-            <Text style={styles.averageValue}>{weeklyStepsAvg.toLocaleString()}</Text>
-            <Text style={styles.averageLabel}>Steps/day</Text>
-          </Card>
-          <Card style={styles.averageCard}>
-            <Ionicons name="moon" size={24} color={Colors.textPrimary} />
-            <Text style={styles.averageValue}>{weeklySleepAvg.toFixed(1)}h</Text>
-            <Text style={styles.averageLabel}>Sleep/night</Text>
-          </Card>
-        </View>
-      </View>
+          {/* Weekly Averages */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Weekly Averages</Text>
+            <View style={styles.statsGrid}>
+              <Card style={styles.averageCard}>
+                <Ionicons name="trending-up" size={22} color={colors.textSecondary} />
+                <Text style={[styles.averageValue, { color: colors.textPrimary }]}>
+                  {weeklyStepsAvg.toLocaleString()}
+                </Text>
+                <Text style={[styles.averageLabel, { color: colors.textSecondary }]}>Steps/day</Text>
+              </Card>
+              <Card style={styles.averageCard}>
+                <Ionicons name="moon" size={22} color={colors.textSecondary} />
+                <Text style={[styles.averageValue, { color: colors.textPrimary }]}>
+                  {weeklySleepAvg.toFixed(1)}h
+                </Text>
+                <Text style={[styles.averageLabel, { color: colors.textSecondary }]}>Sleep/night</Text>
+              </Card>
+            </View>
+          </View>
 
-      {/* Steps Chart */}
-      {hasStepsData && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Steps (Last 7 Days)</Text>
-          <Card style={styles.chartCard}>
-            <LineChart
-              data={stepsChartData}
-              width={chartWidth - Spacing.md * 2}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              fromZero
-              style={styles.chart}
-              yAxisSuffix=""
-              yAxisInterval={1}
+          {/* Steps Chart */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Steps (Last 7 Days)</Text>
+            {hasStepsData ? (
+              <Card style={styles.chartCard}>
+                <LineChart
+                  data={stepsChartData}
+                  width={chartWidth - Spacing.md * 2}
+                  height={220}
+                  chartConfig={chartConfig}
+                  bezier
+                  fromZero
+                  style={styles.chart}
+                  yAxisSuffix=""
+                  yAxisInterval={1}
+                />
+              </Card>
+            ) : (
+              <View style={[styles.emptyState, { borderColor: colors.border }]}>
+                <Ionicons name="footsteps-outline" size={32} color={colors.textTertiary} />
+                <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>
+                  No steps data yet
+                </Text>
+                <Text style={[styles.emptyStateBody, { color: colors.textSecondary }]}>
+                  Open the Health app or go for a walk to start tracking your steps.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Sleep Chart */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Sleep (Last 7 Days)</Text>
+            {hasSleepData ? (
+              <Card style={styles.chartCard}>
+                <LineChart
+                  data={sleepChartData}
+                  width={chartWidth - Spacing.md * 2}
+                  height={220}
+                  chartConfig={chartConfig}
+                  bezier
+                  fromZero
+                  style={styles.chart}
+                  yAxisSuffix="h"
+                  yAxisInterval={1}
+                />
+              </Card>
+            ) : (
+              <View style={[styles.emptyState, { borderColor: colors.border }]}>
+                <Ionicons name="moon-outline" size={32} color={colors.textTertiary} />
+                <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>
+                  No sleep data yet
+                </Text>
+                <Text style={[styles.emptyStateBody, { color: colors.textSecondary }]}>
+                  Sleep data appears here once your device records a sleep session.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Sync Button */}
+          <TouchableOpacity
+            style={[
+              styles.syncButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              isSyncing && styles.syncButtonDisabled,
+            ]}
+            onPress={() => user && syncToSupabase(user.id)}
+            disabled={isSyncing || !user}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={isSyncing ? 'sync' : 'cloud-upload-outline'}
+              size={18}
+              color={colors.textSecondary}
             />
-          </Card>
-        </View>
+            <Text style={[styles.syncButtonText, { color: colors.textSecondary }]}>
+              {isSyncing ? 'Syncing...' : 'Sync to Cloud'}
+            </Text>
+          </TouchableOpacity>
+        </>
       )}
-
-      {/* Sleep Chart */}
-      {hasSleepData && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sleep Duration (Last 7 Days)</Text>
-          <Card style={styles.chartCard}>
-            <LineChart
-              data={sleepChartData}
-              width={chartWidth - Spacing.md * 2}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              fromZero
-              style={styles.chart}
-              yAxisSuffix="h"
-              yAxisInterval={1}
-            />
-          </Card>
-        </View>
-      )}
-
-      {/* Sync Button */}
-      <TouchableOpacity
-        style={[styles.syncButton, isSyncing && styles.syncButtonDisabled]}
-        onPress={() => user && syncToSupabase(user.id)}
-        disabled={isSyncing || !user}
-      >
-        <Ionicons
-          name={isSyncing ? 'sync' : 'cloud-upload-outline'}
-          size={20}
-          color={Colors.textPrimary}
-        />
-        <Text style={styles.syncButtonText}>
-          {isSyncing ? 'Syncing...' : 'Sync to Cloud'}
-        </Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   content: {
     padding: Spacing.lg,
   },
@@ -329,24 +531,24 @@ const styles = StyleSheet.create({
   },
   title: {
     ...Typography.h1,
-    color: Colors.textPrimary,
     marginBottom: Spacing.xs,
   },
   subtitle: {
     ...Typography.bodySmall,
-    color: Colors.textSecondary,
   },
   section: {
     marginBottom: Spacing.xl,
   },
   sectionTitle: {
-    ...Typography.h2,
-    color: Colors.textPrimary,
+    ...Typography.h3,
     marginBottom: Spacing.md,
   },
   statsGrid: {
     flexDirection: 'row',
     gap: Spacing.md,
+  },
+  statTileWrapper: {
+    flex: 1,
   },
   averageCard: {
     flex: 1,
@@ -355,12 +557,10 @@ const styles = StyleSheet.create({
   },
   averageValue: {
     ...Typography.h2,
-    color: Colors.textPrimary,
     marginTop: Spacing.sm,
   },
   averageLabel: {
     ...Typography.bodySmall,
-    color: Colors.textSecondary,
     marginTop: Spacing.xs,
   },
   chartCard: {
@@ -370,59 +570,70 @@ const styles = StyleSheet.create({
     marginVertical: Spacing.sm,
     borderRadius: BorderRadius.medium,
   },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: BorderRadius.medium,
+    gap: Spacing.sm,
+  },
+  emptyStateTitle: {
+    ...Typography.h3,
+    textAlign: 'center',
+  },
+  emptyStateBody: {
+    ...Typography.bodySmall,
+    textAlign: 'center',
+  },
   syncButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surface,
     padding: Spacing.md,
     borderRadius: BorderRadius.medium,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: Spacing.sm,
     marginTop: Spacing.md,
+    minHeight: 44,
   },
   syncButtonDisabled: {
     opacity: 0.5,
   },
   syncButtonText: {
     ...Typography.body,
-    color: Colors.textPrimary,
   },
   permissionContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xxxl,
+    gap: Spacing.md,
   },
   permissionTitle: {
     ...Typography.h2,
-    color: Colors.textPrimary,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.md,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
   },
   permissionDescription: {
     ...Typography.body,
-    color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: Spacing.xl,
   },
   permissionButton: {
-    backgroundColor: Colors.primary,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.xl,
     borderRadius: BorderRadius.medium,
+    marginTop: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   permissionButtonText: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
+    ...Typography.button,
   },
   errorText: {
     ...Typography.body,
-    color: Colors.error,
     textAlign: 'center',
     padding: Spacing.xl,
   },
 });
-
-
-
-
