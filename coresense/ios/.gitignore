@@ -20,8 +20,6 @@ DerivedData
 *.hmap
 *.ipa
 *.xcuserstate
-*.xcarchive
-archive.log
 project.xcworkspace
 .xcode.env.local
 

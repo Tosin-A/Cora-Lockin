@@ -35,7 +35,7 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>4</string>
+    <string>5</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
@@ -51,18 +51,22 @@
     <string>CoreSense needs calendar access to schedule your commitments and find the best available times.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>CoreSense needs calendar access to schedule your commitments and find the best available times.</string>
-    <key>NSRemindersFullAccessUsageDescription</key>
-    <string>CoreSense needs reminders access to help you stay on track with your goals.</string>
-    <key>NSRemindersUsageDescription</key>
-    <string>CoreSense needs reminders access to help you stay on track with your goals.</string>
     <key>NSHealthShareUsageDescription</key>
     <string>CoreSense needs access to your health data to provide personalized coaching insights.</string>
     <key>NSHealthUpdateUsageDescription</key>
     <string>CoreSense needs access to update your health data for tracking purposes.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>CoreSense needs reminders access to help you stay on track with your goals.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>CoreSense needs reminders access to help you stay on track with your goals.</string>
     <key>RCTNewArchEnabled</key>
     <true/>
+    <key>UIAppFonts</key>
+    <array>
+      <string>Ionicons.ttf</string>
+    </array>
     <key>UIBackgroundModes</key>
     <array>
       <string>remote-notification</string>
