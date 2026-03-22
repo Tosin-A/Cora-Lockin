@@ -68,7 +68,8 @@
         "expo-build-properties",
         {
           "ios": {
-            "newArchEnabled": true
+            "newArchEnabled": true,
+            "buildReactNativeFromSource": true
           },
           "android": {
             "kotlinVersion": "2.1.20"
