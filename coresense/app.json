@@ -31,7 +31,7 @@
         "com.apple.developer.healthkit.access": [],
         "aps-environment": "production"
       },
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "android": {
       "adaptiveIcon": {
@@ -82,7 +82,14 @@
           "color": "#9333EA"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "CoreSense needs access to your health data to provide personalized coaching insights.",
+          "NSHealthUpdateUsageDescription": "CoreSense needs access to update your health data for tracking purposes."
+        }
+      ]
     ],
     "scheme": "coresense",
     "extra": {

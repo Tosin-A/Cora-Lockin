@@ -1,0 +1,105 @@
+diff --git a/node_modules/react-native/.DS_Store b/node_modules/react-native/.DS_Store
+new file mode 100644
+index 0000000..52dab23
+Binary files /dev/null and b/node_modules/react-native/.DS_Store differ
+diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index 2a67797..b9aa0ef 100644
+--- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -420,17 +420,13 @@ TraceSection s(
+   std::string methodNameStr{methodName};
+   __block int32_t asyncCallCounter = 0;
+ 
+-  void (^block)() = ^{
++  void (^syncBlock)() = ^{
+     id<RCTBridgeModule> strongModule = weakModule;
+     if (!strongModule) {
+       return;
+     }
+ 
+-    if (shouldVoidMethodsExecuteSync_) {
+-      TurboModulePerfLogger::syncMethodCallExecutionStart(moduleName, methodName);
+-    } else {
+-      TurboModulePerfLogger::asyncMethodCallExecutionStart(moduleName, methodName, asyncCallCounter);
+-    }
++    TurboModulePerfLogger::syncMethodCallExecutionStart(moduleName, methodName);
+ 
+     @try {
+       [inv invokeWithTarget:strongModule];
+@@ -440,24 +436,42 @@ TraceSection s(
+       [retainedObjectsForInvocation removeAllObjects];
+     }
+ 
+-    if (shouldVoidMethodsExecuteSync_) {
+-      TurboModulePerfLogger::syncMethodCallExecutionEnd(moduleName, methodName);
+-    } else {
+-      TurboModulePerfLogger::asyncMethodCallExecutionEnd(moduleName, methodName, asyncCallCounter);
++    TurboModulePerfLogger::syncMethodCallExecutionEnd(moduleName, methodName);
++  };
++
++  void (^asyncBlock)() = ^{
++    id<RCTBridgeModule> strongModule = weakModule;
++    if (!strongModule) {
++      return;
+     }
+ 
+-    return;
++    TurboModulePerfLogger::asyncMethodCallExecutionStart(moduleName, methodName, asyncCallCounter);
++
++    @try {
++      [inv invokeWithTarget:strongModule];
++    } @catch (NSException *exception) {
++      // For async void methods, we cannot rethrow as a JSError because
++      // nothing on the async dispatch queue's call stack can catch it,
++      // which causes abort(). Instead, log the error.
++      NSString *message = [NSString stringWithFormat:@"Exception '%@' was thrown while invoking %s on target %@ with params (%@)\ncallstack: %@",
++        exception, methodName, strongModule, exception.userInfo, exception.callStackSymbols];
++      RCTLogError(@"%@", message);
++    } @finally {
++      [retainedObjectsForInvocation removeAllObjects];
++    }
++
++    TurboModulePerfLogger::asyncMethodCallExecutionEnd(moduleName, methodName, asyncCallCounter);
+   };
+ 
+   if (shouldVoidMethodsExecuteSync_) {
+-    nativeMethodCallInvoker_->invokeSync(methodNameStr, [&]() -> void { block(); });
++    nativeMethodCallInvoker_->invokeSync(methodNameStr, [&]() -> void { syncBlock(); });
+   } else {
+     asyncCallCounter = getUniqueId();
+     TurboModulePerfLogger::asyncMethodCallDispatch(moduleName, methodName);
+-    nativeMethodCallInvoker_->invokeAsync(methodNameStr, [moduleName, methodNameStr, block]() -> void {
++    nativeMethodCallInvoker_->invokeAsync(methodNameStr, [moduleName, methodNameStr, asyncBlock]() -> void {
+       TraceSection s(
+           "RCTTurboModuleAsyncMethodInvocation", "module", moduleName, "method", methodNameStr, "returnType", "void");
+-      block();
++      asyncBlock();
+     });
+   }
+ }
+diff --git a/node_modules/react-native/scripts/cocoapods/new_architecture.rb b/node_modules/react-native/scripts/cocoapods/new_architecture.rb
+index 7d8f8e6..a237375 100644
+--- a/node_modules/react-native/scripts/cocoapods/new_architecture.rb
++++ b/node_modules/react-native/scripts/cocoapods/new_architecture.rb
+@@ -163,7 +163,7 @@ class NewArchitectureHelper
+             .uniq{ |p| p.path }
+             .map{ |p| p.path }
+ 
+-        excluded_info_plist = ["/Pods", "Tests", "metainternal", ".bundle", "build/", "DerivedData/"]
++        excluded_info_plist = ["/Pods", "Tests", "metainternal", ".bundle", "build/", "DerivedData/", ".xcarchive"]
+         projectPaths.each do |projectPath|
+             projectFolderPath = File.dirname(projectPath)
+             infoPlistFiles = `find #{projectFolderPath} -name "Info.plist"`
+@@ -180,7 +180,11 @@ class NewArchitectureHelper
+                 next if should_skip
+ 
+                 # Read the file as a plist
+-                info_plist = Xcodeproj::Plist.read_from_path(infoPlistFile)
++                begin
++                    info_plist = Xcodeproj::Plist.read_from_path(infoPlistFile)
++                rescue => e
++                    next
++                end
+                 # Check if it contains the RCTNewArchEnabled key
+                 if info_plist["RCTNewArchEnabled"] and info_plist["RCTNewArchEnabled"] == new_arch_enabled
+                     next
