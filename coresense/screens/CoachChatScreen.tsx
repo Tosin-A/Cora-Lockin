@@ -77,7 +77,7 @@ export default function CoachChatScreen({ navigation }: any) {
   const loadUsageStats = useMessageLimitStore((s) => s.loadUsageStats);
   const isPro = useSubscriptionStore((s) => s.isPro);
   const startCheckout = useSubscriptionStore((s) => s.startCheckout);
-  const productPrice = useSubscriptionStore((s) => s.productPrice);
+  const productPrice = useSubscriptionStore((s) => s.priceString);
   const checkoutLoading = useSubscriptionStore((s) => s.checkoutLoading);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);

@@ -1,4 +1,4 @@
-require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
+ require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
 require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
 
 require 'json'
@@ -59,5 +59,55 @@ target 'CoreSense' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # Fix fmt consteval errors on Apple Clang 17+ (Xcode 16+).
+    # Apple Clang in Xcode 26 reports __apple_build_version__ ~ 21000101 and rejects
+    # fmt's compile-time format-string checks under consteval. We address this in
+    # two places:
+    #   1. The fmt header is patched to unconditionally disable FMT_USE_CONSTEVAL on Apple.
+    #   2. -DFMT_USE_CONSTEVAL=0 is applied to every Pod target so consumers of fmt
+    #      (RCT-Folly, ReactCommon, etc.) see the same configuration.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+        defs = [defs] unless defs.is_a?(Array)
+        defs << 'FMT_USE_CONSTEVAL=0' unless defs.include?('FMT_USE_CONSTEVAL=0')
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+      end
+    end
+
+    # Header-level patch (belt-and-suspenders): unconditionally force
+    # FMT_USE_CONSTEVAL=0 on Apple regardless of __apple_build_version__ value.
+    fmt_base = File.join(installer.sandbox.root, 'fmt/include/fmt/base.h')
+    if File.exist?(fmt_base)
+      content = File.read(fmt_base)
+      # Strip any prior version of this patch so we can re-apply the current one cleanly.
+      content = content.gsub(
+        /\n\/\/ Patched for Xcode 26 \(fmt\/base\.h\):.*?#endif\n#if FMT_USE_CONSTEVAL\n#  define FMT_CONSTEVAL consteval/m,
+        "\n#if FMT_USE_CONSTEVAL\n#  define FMT_CONSTEVAL consteval"
+      )
+
+      needle = "#endif\n#if FMT_USE_CONSTEVAL\n#  define FMT_CONSTEVAL consteval"
+      insert = <<~PATCH.chomp
+        #endif
+        // Patched for Xcode 26 (fmt/base.h): force-disable consteval on Apple toolchains.
+        // Apple Clang's stricter consteval evaluation rejects fmt's compile-time format
+        // checks, so we always take the runtime path on Apple platforms.
+        #if defined(__APPLE__)
+        #undef FMT_USE_CONSTEVAL
+        #define FMT_USE_CONSTEVAL 0
+        #endif
+        #if FMT_USE_CONSTEVAL
+        #  define FMT_CONSTEVAL consteval
+      PATCH
+      if content.include?(needle)
+        new_content = content.sub(needle, insert)
+        if new_content != File.read(fmt_base)
+          File.chmod(0o644, fmt_base)
+          File.write(fmt_base, new_content)
+          Pod::UI.puts "Patched fmt/base.h: disabled consteval unconditionally on Apple"
+        end
+      end
+    end
   end
 end
