@@ -156,10 +156,15 @@ export const getUserPreferences = async (
   userId: string
 ): Promise<{ data: UserPreferences | null; error: any }> => {
   try {
+    // Defensive: order by updated_at and limit to 1 so that if the table ever
+    // ends up with duplicate rows for a user (e.g. before the unique constraint
+    // was added), we silently pick the most recent one instead of erroring.
     const { data, error } = await supabase
       .from("user_preferences")
       .select("*")
       .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) {
