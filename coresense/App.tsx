@@ -29,21 +29,46 @@ function AppContent() {
   );
 }
 
+// Try the ciConfig.json fallback for analytics keys (written by Xcode Cloud's
+// ci_post_clone.sh) so PostHog still initializes when the env vars are
+// unavailable to the bundler.
+let ciConfig: Record<string, string | undefined> = {};
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ciConfig = require('./utils/ciConfig.json');
+} catch {
+  // ciConfig.json doesn't exist in local dev (expected).
+}
+
 export default function App() {
+  // Analytics is optional. If the key isn't baked into the build (e.g.
+  // PostHog vars missing in Xcode Cloud / EAS env), skip PostHog entirely
+  // rather than letting its SDK throw and bring the whole app down.
+  const posthogKey =
+    process.env.EXPO_PUBLIC_POSTHOG_API_KEY || ciConfig.EXPO_PUBLIC_POSTHOG_API_KEY;
+  const posthogHost =
+    process.env.EXPO_PUBLIC_POSTHOG_HOST || ciConfig.EXPO_PUBLIC_POSTHOG_HOST;
+
+  const Tree = (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <PostHogProvider
-          apiKey={process.env.EXPO_PUBLIC_POSTHOG_API_KEY!}
-          autocapture={false}
-          options={{
-            host: process.env.EXPO_PUBLIC_POSTHOG_HOST,
-          }}
-        >
-          <ThemeProvider>
-            <AppContent />
-          </ThemeProvider>
-        </PostHogProvider>
+        {posthogKey ? (
+          <PostHogProvider
+            apiKey={posthogKey}
+            autocapture={false}
+            options={posthogHost ? { host: posthogHost } : undefined}
+          >
+            {Tree}
+          </PostHogProvider>
+        ) : (
+          Tree
+        )}
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

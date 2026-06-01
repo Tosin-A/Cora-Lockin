@@ -11,13 +11,17 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://coresense-backend-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://coresense-backend-production.up.railway.app",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ngcmutnfqelsqiuitcfw.supabase.co",
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://eu.i.posthog.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://coresense-backend-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://coresense-backend-production.up.railway.app",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ngcmutnfqelsqiuitcfw.supabase.co",
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://eu.i.posthog.com"
       }
     }
   },

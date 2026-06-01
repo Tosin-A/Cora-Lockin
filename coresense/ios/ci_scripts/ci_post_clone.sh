@@ -17,6 +17,8 @@ cat > .env <<EOL
 EXPO_PUBLIC_SUPABASE_URL=${EXPO_PUBLIC_SUPABASE_URL}
 EXPO_PUBLIC_SUPABASE_ANON_KEY=${EXPO_PUBLIC_SUPABASE_ANON_KEY}
 EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
+EXPO_PUBLIC_POSTHOG_API_KEY=${EXPO_PUBLIC_POSTHOG_API_KEY}
+EXPO_PUBLIC_POSTHOG_HOST=${EXPO_PUBLIC_POSTHOG_HOST}
 EOL
 
 # Also write a JSON config that gets bundled by Metro as a direct import fallback
@@ -25,14 +27,26 @@ cat > utils/ciConfig.json <<EOL
 {
   "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
   "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
-  "EXPO_PUBLIC_API_URL": "${EXPO_PUBLIC_API_URL}"
+  "EXPO_PUBLIC_API_URL": "${EXPO_PUBLIC_API_URL}",
+  "EXPO_PUBLIC_POSTHOG_API_KEY": "${EXPO_PUBLIC_POSTHOG_API_KEY}",
+  "EXPO_PUBLIC_POSTHOG_HOST": "${EXPO_PUBLIC_POSTHOG_HOST}"
 }
 EOL
 
-# Verify env vars are set
+# Verify required env vars are set. Supabase URL/anon key are required for the
+# app to function at all; PostHog vars are optional (analytics is skipped if
+# missing). API URL has a sensible default.
 if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ]; then
-    echo "WARNING: EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY not set in Xcode Cloud!"
+    echo "ERROR: EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY not set in Xcode Cloud!"
     echo "Set them in Xcode Cloud: Workflow > Environment Variables"
+    echo "Without these, the app will black-screen on launch."
+    exit 1
+fi
+if [ -z "$EXPO_PUBLIC_API_URL" ]; then
+    echo "WARNING: EXPO_PUBLIC_API_URL not set; app will fall back to its hardcoded default."
+fi
+if [ -z "$EXPO_PUBLIC_POSTHOG_API_KEY" ]; then
+    echo "INFO: EXPO_PUBLIC_POSTHOG_API_KEY not set; analytics will be disabled in this build."
 fi
 
 echo "=== Installing Node.js dependencies ==="
