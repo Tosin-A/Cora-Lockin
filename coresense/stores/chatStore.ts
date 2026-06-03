@@ -308,11 +308,46 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         }));
       }
 
-      // Single delayed history fetch to pick up the assistant response
-      // instead of polling up to 40 times
+      // Append the assistant's bubbles optimistically so the user sees the
+      // reply IMMEDIATELY — don't wait 2s for /history to come back.
+      // The backend response already contains the split bubbles in
+      // `data.messages` and corresponding temp IDs in
+      // `data.saved_ids.assistant_temp_ids`. Real DB IDs (if present) are
+      // returned as `saved_ids.coach_message_<idx>` per coaching_service.py.
+      const coachBubbles: string[] = Array.isArray(data?.messages)
+        ? data.messages
+        : [];
+      if (coachBubbles.length > 0) {
+        const savedIds = (data?.saved_ids || {}) as Record<string, string>;
+        const runIdForKeys = data?.run_id || data?.response_id || `local-${Date.now()}`;
+        const optimisticCoachMessages: ChatMessage[] = coachBubbles.map(
+          (text: string, idx: number) => {
+            const realId = savedIds[`coach_message_${idx}`];
+            const tempId = assistantTempIds[idx];
+            return {
+              id: realId || tempId || `coach-${runIdForKeys}-${idx}`,
+              text,
+              sender: "coach" as const,
+              timestamp: new Date(Date.now() + idx), // preserve order
+              status: "delivered" as const,
+              assistant_temp_id: tempId,
+              response_id: data?.response_id,
+              run_id: data?.run_id,
+              isOptimistic: !realId,
+            };
+          }
+        );
+        set((state) => ({
+          messages: [...state.messages, ...optimisticCoachMessages],
+        }));
+      }
+
+      // Background reconciliation: short, delta-mode (does NOT blank the
+      // visible list) so any DB-side fields the backend wrote after returning
+      // get folded in without flicker.
       setTimeout(() => {
-        get().loadChatHistory({ useFullReplace: true, forceRefresh: true, silent: true });
-      }, 2000);
+        get().loadChatHistory({ useFullReplace: false, forceRefresh: true, silent: true });
+      }, 500);
 
       // Refresh usage stats after successful message
       const { loadUsageStats } = useMessageLimitStore.getState();
