@@ -695,28 +695,47 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   // Helper method for delta message appending
-  // Only appends messages that don't already exist in the list
+  // Dedupes by id AND by (sender, text, near-timestamp) so optimistic
+  // messages get reconciled with their server-side counterparts even when
+  // the id swap was missed (e.g. backend returned no saved_ids.user_message).
   appendNewMessages: (newMessages: ChatMessage[]) => {
-    const { messages, lastRunId } = get();
+    const { messages } = get();
 
-    // Filter to only messages that don't exist in our current list
-    const existingIds = new Set(messages.map((m) => m.id));
+    const NEAR_MS = 2 * 60 * 1000; // 2 min window for optimistic-vs-server match
+    const norm = (t: string) => (t || "").trim();
+
+    // Pass 1: drop any locally-optimistic message that a server message
+    // already represents (same sender + same text within NEAR_MS).
+    const kept = messages.filter((local) => {
+      if (!local.isOptimistic && !local.client_temp_id) return true;
+      const localT = new Date(local.timestamp).getTime();
+      const replaced = newMessages.some(
+        (srv) =>
+          srv.sender === local.sender &&
+          norm(srv.text) === norm(local.text) &&
+          Math.abs(new Date(srv.timestamp).getTime() - localT) < NEAR_MS
+      );
+      return !replaced;
+    });
+
+    // Pass 2: standard id dedupe against what's now kept.
+    const existingIds = new Set(kept.map((m) => m.id));
     const newOnly = newMessages.filter((m) => !existingIds.has(m.id));
 
-    if (newOnly.length > 0) {
-      console.log(`Appending ${newOnly.length} new messages (delta mode)`);
-
-      // Sort by timestamp to maintain chronological order
-      const sorted = [...messages, ...newOnly].sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
-
-      set({
-        messages: sorted,
-        lastSyncedAt: new Date(),
-      });
+    if (newOnly.length === 0 && kept.length === messages.length) {
+      // Nothing to do — avoid a needless state change.
+      return;
     }
+
+    const sorted = [...kept, ...newOnly].sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    set({
+      messages: sorted,
+      lastSyncedAt: new Date(),
+    });
   },
 
   completeQuickAction: (actionId: string) => {
